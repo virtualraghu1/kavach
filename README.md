@@ -2,6 +2,16 @@
 
 Project workspace for Kavach, a community SOS concept.
 
+## Database
+
+Kavach uses the Supabase project designated by the project owner:
+
+- Project reference: `xvzymtkfzkoskljcexai`
+- Dashboard: https://supabase.com/dashboard/project/xvzymtkfzkoskljcexai
+
+This records the database selection. Application connectivity and schema have
+not yet been configured or verified in this repository.
+
 ## Project materials
 
 The local workspace contains design mockups in `mockups/`, a business-plan
