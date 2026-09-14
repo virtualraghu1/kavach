@@ -43,9 +43,10 @@ database evidence and [`docs/authentication-design.md`](docs/authentication-desi
 for the no-email identity, throttling and deployment boundaries.
 
 Phase One of the next account-access milestone now includes a controlled,
-production-locked first-owner bootstrap migration and command. Supabase rejected
-the requested empty staging branch before creation because the Free organisation
-does not include Branching, so nothing was charged or applied remotely. See
+production-locked first-owner bootstrap migration and command. An earlier
+staging-branch attempt in the former Free organisation was rejected before
+creation. The replacement organisation is Pro; no branch was created as part of
+this connection switch. See
 [`docs/phase-one-owner-bootstrap.md`](docs/phase-one-owner-bootstrap.md) for the
 environment decision, implemented safeguards and remaining execution gate.
 

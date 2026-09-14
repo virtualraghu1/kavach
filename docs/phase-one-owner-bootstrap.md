@@ -5,20 +5,23 @@ blocked by the staging and owner-identity gates below.
 
 ## Environment decision
 
-The confirmed Kavach organisation is on the Supabase Free plan. The account
-already uses its two free-project allowance across the Kavach and unrelated
-WOW Fitness organisations. An empty, non-persistent Micro preview branch was
-attempted without production data, but Supabase rejected it with HTTP 402 before
-creation because Branching requires Pro. No branch was created and no charge
-was incurred.
+An empty, non-persistent Micro preview branch was attempted in the former
+Kavach Free organisation without production data. Supabase rejected it with
+HTTP 402 before creation because Branching requires Pro. No branch was created
+and no charge was incurred.
 
-Upgrading only to obtain a long-running staging environment is not justified for
-this charity pilot. The least-cost safe options are:
+Kavach now uses project `ldexvxjccihecrclirof` in the Pro organisation
+`faxhpalwqhkhfsysmalv`. The project connection switch did not create or test a
+Supabase branch. Confirm the current branch pricing and configuration in the
+dashboard before creating one.
+
+A separate long-running hosted staging project is not justified for this
+charity pilot. The least-cost safe options are:
 
 1. install a local Docker-compatible runtime and use `supabase start` at no
    Supabase hosting cost; or
-2. temporarily upgrade Kavach, create an empty Micro branch for bounded tests,
-   and delete it immediately after verification.
+2. create an empty preview branch in the current Pro organisation for bounded
+   tests, then delete it immediately after verification.
 
 Production is not an acceptable substitute for setup/recovery experiments.
 
