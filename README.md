@@ -30,11 +30,14 @@ Kavach uses the Supabase project designated by the project owner:
 - Project reference: `xvzymtkfzkoskljcexai`
 - Dashboard: https://supabase.com/dashboard/project/xvzymtkfzkoskljcexai
 
-The Phase 2 feature branch contains the Supabase CLI configuration and the
-accounts/membership migration. The schema was applied to the confirmed Kavach
-project on 14 September 2026; no Auth users or resident fixtures were created.
-See [`docs/phase2-database-migration.md`](docs/phase2-database-migration.md) for
-scope, verification and recovery boundaries.
+The Phase 2 feature branch contains the Supabase CLI configuration, the
+accounts/membership schema and a local server-side username/email sign-in
+service. Both database migrations were applied to the confirmed Kavach project
+on 14 September 2026. The sign-in Edge Function remains undeployed, and no Auth
+users or resident fixtures were created. See
+[`docs/phase2-database-migration.md`](docs/phase2-database-migration.md) for
+database evidence and [`docs/authentication-design.md`](docs/authentication-design.md)
+for the no-email identity, throttling and deployment boundaries.
 
 ## Project materials
 

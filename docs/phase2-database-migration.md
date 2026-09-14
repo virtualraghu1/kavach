@@ -28,6 +28,13 @@ Application writes remain server-only; no public mutation policies were added.
 Pending setup/recovery grants are revoked when a membership is deactivated or
 verification is invalidated.
 
+The follow-up migration
+`20260914061939_account_sign_in_api.sql` adds three server-only functions for
+private identifier resolution, atomic durable sign-in throttling and an
+eligibility-checked successful-sign-in acknowledgement. All three functions use
+a fixed empty search path, revoke execution from public browser roles and grant
+execution only to `service_role`.
+
 ## Verification evidence
 
 - PostgreSQL 17 parser accepted all 74 migration statements.
@@ -37,6 +44,14 @@ verification is invalidated.
 - An anonymous REST request to `communities` returned HTTP 401 / PostgreSQL
   `42501` permission denied.
 - Supabase Security Advisor reported 0 errors and 0 warnings after migration.
+- PostgreSQL 17 parser accepted all 11 statements in the account sign-in RPC
+  migration, and the SQL editor applied its transaction successfully.
+- Database privilege checks returned `false` for `anon` and `authenticated`, and
+  `true` for `service_role`, for each of the three sign-in RPCs.
+- A direct anonymous REST call to `server_resolve_login` returned HTTP 401 /
+  PostgreSQL `42501` permission denied.
+- Supabase Security Advisor still reported 0 errors and 0 warnings after the
+  follow-up migration.
 
 Local Docker was unavailable, so `supabase db reset` and pgTAP were not run.
 The migration was applied in the SQL editor rather than through `supabase db
@@ -53,10 +68,13 @@ do not execute ad-hoc `drop ... cascade` commands.
 
 ## Next gate
 
-No owner, staff or resident Auth users were created. Before account provisioning:
+No Edge Function was deployed and no owner, staff or resident Auth users were
+created. Before account provisioning:
 
-1. implement and review the server-only account/setup/recovery endpoints;
-2. configure a server-side grant pepper and privileged Supabase key;
-3. close public signup and verify current Auth settings;
-4. bootstrap the owner through the documented offline route;
-5. test two-community isolation in a staging branch with fictional fixtures.
+1. review the local sign-in service described in
+   [`authentication-design.md`](authentication-design.md);
+2. configure the exact-origin allowlist and server-only rate-limit pepper;
+3. approve and deploy the sign-in function;
+4. close public signup and verify current Auth settings;
+5. bootstrap the owner through the documented offline route; and
+6. test two-community isolation in a staging branch with fictional fixtures.
