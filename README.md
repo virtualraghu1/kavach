@@ -19,23 +19,25 @@ Kavach uses the Vercel hosting details supplied by the project owner:
 The Vercel project is connected to `virtualraghu1/kavach`, with `main` as the
 production branch. Root-level `vercel.json` installs dependencies in `admin/`,
 runs type checking, lint, tests and the build, and serves `admin/dist/client`.
-No environment variables or database connection are required for this demo.
-Only fictional data should be entered: records are browser-local, not protected
-by real administrator authentication or shared across devices.
+Production uses project-scoped Vercel environment variables for the Kavach
+Supabase URL and public publishable key. Only fictional data should be entered:
+the current enrollment repository remains browser-local and is not yet shared
+across devices.
 
 ## Database
 
 Kavach uses the Supabase project designated by the project owner:
 
-- Project reference: `xvzymtkfzkoskljcexai`
-- Dashboard: https://supabase.com/dashboard/project/xvzymtkfzkoskljcexai
+- Organisation: `Wellness of women private limited` (`faxhpalwqhkhfsysmalv`)
+- Project reference: `ldexvxjccihecrclirof`
+- Dashboard: https://supabase.com/dashboard/project/ldexvxjccihecrclirof
 
 The Phase 2 feature branch contains the Supabase CLI configuration, the
 accounts/membership schema and a local server-side username/email sign-in
-service. Both database migrations were applied to the confirmed Kavach project
-on 14 September 2026. The reviewed sign-in Edge Function was deployed to that
-project on the same date and verified with fictional invalid credentials. No
-Auth users or resident fixtures were created. See
+service. All three database migrations were applied to the confirmed replacement
+Kavach project on 14 September 2026. The reviewed sign-in Edge Function was
+deployed to that project on the same date. No Auth users or resident fixtures
+were created. See
 [`docs/phase2-database-migration.md`](docs/phase2-database-migration.md) for
 database evidence and [`docs/authentication-design.md`](docs/authentication-design.md)
 for the no-email identity, throttling and deployment boundaries.

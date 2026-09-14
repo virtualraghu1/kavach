@@ -43,7 +43,7 @@ Production files are emitted to `dist/client`. The inherited template also gener
 ## Supabase connection
 
 The feature branch is configured locally for Kavach project
-`xvzymtkfzkoskljcexai`. Settings performs a no-cache Auth health request and a
+`ldexvxjccihecrclirof`. Settings performs a no-cache Auth health request and a
 read-only query for the expected `communities` table. The Phase 2 schema is
 installed and intentionally denies anonymous table access. The existing
 enrollment repository remains browser-local until authenticated server

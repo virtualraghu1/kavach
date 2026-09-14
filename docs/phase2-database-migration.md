@@ -2,11 +2,11 @@
 
 ## Applied environment
 
-- Supabase organisation: `kavach` (`nakqywjdrvcznouagawb`)
-- Supabase project: `kavach` (`xvzymtkfzkoskljcexai`)
+- Supabase organisation: `Wellness of women private limited` (`faxhpalwqhkhfsysmalv`)
+- Supabase project: `kavach` (`ldexvxjccihecrclirof`)
 - Region: Mumbai (`ap-south-1`)
 - Branch: `main` (production)
-- Applied: 14 September 2026 through the authenticated Supabase SQL editor
+- Applied: 14 September 2026 through the authenticated Supabase integration
 
 The project was confirmed to have no public tables or views before the
 migration. Therefore, no existing community row or relationship was replaced.
@@ -37,26 +37,29 @@ execution only to `service_role`.
 
 ## Verification evidence
 
-- PostgreSQL 17 parser accepted all 74 migration statements.
-- The SQL editor completed the migration transaction successfully.
+- The authenticated Supabase migration API applied all three committed
+  migrations and recorded them in the project's migration history.
 - The canonical community query returned exactly one matching row.
 - Nine public application tables reported RLS enabled.
+- The project contained zero Auth users after migration.
 - An anonymous REST request to `communities` returned HTTP 401 / PostgreSQL
   `42501` permission denied.
-- Supabase Security Advisor reported 0 errors and 0 warnings after migration.
-- PostgreSQL 17 parser accepted all 11 statements in the account sign-in RPC
-  migration, and the SQL editor applied its transaction successfully.
 - Database privilege checks returned `false` for `anon` and `authenticated`, and
   `true` for `service_role`, for each of the three sign-in RPCs.
 - A direct anonymous REST call to `server_resolve_login` returned HTTP 401 /
   PostgreSQL `42501` permission denied.
-- Supabase Security Advisor still reported 0 errors and 0 warnings after the
-  follow-up migration.
+- Security Advisor returned four informational `rls_enabled_no_policy` findings
+  for private tables. Those tables intentionally have RLS enabled without
+  policies or browser-role grants so only the server-side service role can use
+  them. It returned no error or warning findings.
+- Performance Advisor returned informational findings for unindexed foreign
+  keys, unused indexes in the fresh empty project and the Auth connection
+  allocation. These remain performance follow-ups rather than connection
+  blockers.
 
 Local Docker was unavailable, so `supabase db reset` and pgTAP were not run.
-The migration was applied in the SQL editor rather than through `supabase db
-push`; reconcile its applied state before adopting CLI-managed migration
-history.
+The migration history is recorded in the target project and can be reconciled
+with the committed files before a future CLI-managed schema change.
 
 ## Recovery and rollback
 
@@ -68,9 +71,9 @@ do not execute ad-hoc `drop ... cascade` commands.
 
 ## Sign-in function deployment
 
-Version 1 of `account-api` was deployed on 14 September 2026 after the project
-list positively matched project `xvzymtkfzkoskljcexai` to organisation
-`nakqywjdrvcznouagawb`. Only the production/local origin allowlist and a random
+Version 2 of `account-api` was active on 14 September 2026 after the project
+record positively matched project `ldexvxjccihecrclirof` to organisation
+`faxhpalwqhkhfsysmalv`. Only the production origin allowlist and a random
 server-side rate-limit pepper were added. The platform-provided Supabase URL,
 publishable-key set and service credentials remain server-managed.
 

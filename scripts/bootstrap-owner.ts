@@ -1,6 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2.116.0";
 
-export const PRODUCTION_PROJECT_REF = "xvzymtkfzkoskljcexai";
+export const PRODUCTION_PROJECT_REF = "ldexvxjccihecrclirof";
 const USERNAME_PATTERN = /^[a-z][a-z0-9._-]{3,31}$/;
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
