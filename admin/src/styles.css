@@ -742,6 +742,50 @@ h3 {
   max-width: 720px;
   padding: 10px;
 }
+
+.connection-card {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  margin: 24px 0;
+  padding: 22px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--surface);
+}
+
+.connection-card h2 {
+  margin: 0 0 6px;
+  font-size: 20px;
+}
+
+.connection-card p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.connection-status {
+  flex: none;
+  padding: 7px 12px;
+  border-radius: 999px;
+  background: #f1f3f5;
+  color: var(--muted);
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.connection-status.connected {
+  background: #e7f7ee;
+  color: var(--green);
+}
+
+@media (max-width: 600px) {
+  .connection-card {
+    flex-direction: column;
+    gap: 14px;
+  }
+}
 .settings form {
   margin-top: 30px;
   display: grid;

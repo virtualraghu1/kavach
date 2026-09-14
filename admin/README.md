@@ -14,6 +14,10 @@ npm run dev -- --host 127.0.0.1 --port 4173
 
 Open http://127.0.0.1:4173. Default route is Enrollment drive. Hash navigation supports Residents, Enrollment drive, Active SOS and Settings without a server router.
 
+Copy `.env.example` to `.env.local` and provide the Kavach project URL and
+publishable key. Only public client configuration belongs in `VITE_` variables;
+never place a Supabase secret or service-role key in the web application.
+
 ```sh
 npm run typecheck
 npm run lint
@@ -35,6 +39,16 @@ Production files are emitted to `dist/client`. The inherited template also gener
 - Editing identity/address/phone/consent/phone-access fields invalidates verification and pairing; inactive residents cannot pair.
 - Activity history excludes codes. Local settings, deactivation confirmation and demo reset confirmation.
 - Native accessible modal dialogs, keyboard focus, responsive desktop/tablet/mobile layouts, empty, loading, error, expiry and completed states.
+
+## Supabase connection
+
+The feature branch is configured locally for Kavach project
+`xvzymtkfzkoskljcexai`. Settings performs a no-cache Auth health request and a
+read-only query for the expected `communities` table. The project API is
+reachable, but the production database currently has no public tables, so the
+existing enrollment repository remains browser-local until an approved Phase 2
+schema migration is reviewed and applied. This avoids presenting demo flags as
+authoritative account activation.
 
 ## Demonstration only
 

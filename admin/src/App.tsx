@@ -25,6 +25,10 @@ import { Avatar, Dialog, Notice, Verified } from "./components";
 import { ActivationPanel } from "./ActivationPanel";
 import { ResidentForm } from "./ResidentForm";
 import { ResidentDetail } from "./ResidentDetail";
+import {
+  checkSupabaseConnection,
+  type SupabaseConnectionResult,
+} from "./supabaseClient";
 type Route = "enrollment" | "residents" | "sos" | "settings";
 const routeFromHash = (): Route => {
   const value = location.hash.slice(1);
@@ -466,10 +470,47 @@ function Settings({
   const [name, setName] = useState(state.community.name),
     [address, setAddress] = useState(state.community.address),
     [admin, setAdmin] = useState(state.administrator.name);
+  const [connection, setConnection] = useState<
+    SupabaseConnectionResult | "checking"
+  >("checking");
+  useEffect(() => {
+    let current = true;
+    void checkSupabaseConnection().then((result) => {
+      if (current) setConnection(result);
+    });
+    return () => {
+      current = false;
+    };
+  }, []);
   return (
     <section className="settings">
       <h1>Office settings</h1>
       <p className="lead">Simple preferences for this local demo.</p>
+      <div className="connection-card" aria-live="polite">
+        <div>
+          <h2>Database connection</h2>
+          <p>
+            {connection === "checking"
+              ? "Checking Kavach Supabase…"
+              : connection.message}
+          </p>
+        </div>
+        <span
+          className={
+            connection !== "checking" && connection.apiConnected
+              ? "connection-status connected"
+              : "connection-status"
+          }
+        >
+          {connection === "checking"
+            ? "Checking"
+            : connection.schemaReady
+              ? "Schema ready"
+              : connection.apiConnected
+                ? "API connected"
+                : "Not connected"}
+        </span>
+      </div>
       <form
         onSubmit={(e) => {
           e.preventDefault();
