@@ -40,6 +40,13 @@ Auth users or resident fixtures were created. See
 database evidence and [`docs/authentication-design.md`](docs/authentication-design.md)
 for the no-email identity, throttling and deployment boundaries.
 
+Phase One of the next account-access milestone now includes a controlled,
+production-locked first-owner bootstrap migration and command. Supabase rejected
+the requested empty staging branch before creation because the Free organisation
+does not include Branching, so nothing was charged or applied remotely. See
+[`docs/phase-one-owner-bootstrap.md`](docs/phase-one-owner-bootstrap.md) for the
+environment decision, implemented safeguards and remaining execution gate.
+
 ## Project materials
 
 The local workspace contains design mockups in `mockups/`, a business-plan
