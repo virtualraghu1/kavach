@@ -2,6 +2,10 @@
 
 Project workspace for Kavach, a community SOS concept.
 
+## Phase 1 admin prototype
+
+The working local enrollment demo is in [`admin/`](admin/README.md). It uses fictional residents and simulated phone acknowledgement, with no external services connected. See its README for run commands, tested workflows and phase boundaries.
+
 ## Hosting
 
 Kavach uses the Vercel hosting details supplied by the project owner:
@@ -12,8 +16,12 @@ Kavach uses the Vercel hosting details supplied by the project owner:
 - Vercel project: `kavach`
 - Vercel team scope: `virtualraghu1-1039s-projects`
 
-These details record the supplied hosting configuration; deployment health,
-GitHub integration, and database connectivity have not yet been verified.
+The Vercel project is connected to `virtualraghu1/kavach`, with `main` as the
+production branch. Root-level `vercel.json` installs dependencies in `admin/`,
+runs type checking, lint, tests and the build, and serves `admin/dist/client`.
+No environment variables or database connection are required for this demo.
+Only fictional data should be entered: records are browser-local, not protected
+by real administrator authentication or shared across devices.
 
 ## Database
 
@@ -33,6 +41,7 @@ generator in `generate_kavach_business_plan.py`, and a business-plan PDF in
 
 These materials are pending upload: at repository setup, the local files were
 iCloud placeholders and macOS could not download their contents because of
-insufficient disk space. This repository currently contains setup files only.
+insufficient disk space. The Phase 1 admin application is now included;
+unrelated project materials remain local.
 
 Temporary working files, local environments, and secrets are excluded from Git.
