@@ -1,0 +1,1 @@
+-- Intentionally empty. Production-like resident fixtures must never be seeded.

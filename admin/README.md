@@ -44,11 +44,11 @@ Production files are emitted to `dist/client`. The inherited template also gener
 
 The feature branch is configured locally for Kavach project
 `xvzymtkfzkoskljcexai`. Settings performs a no-cache Auth health request and a
-read-only query for the expected `communities` table. The project API is
-reachable, but the production database currently has no public tables, so the
-existing enrollment repository remains browser-local until an approved Phase 2
-schema migration is reviewed and applied. This avoids presenting demo flags as
-authoritative account activation.
+read-only query for the expected `communities` table. The Phase 2 schema is
+installed and intentionally denies anonymous table access. The existing
+enrollment repository remains browser-local until authenticated server
+endpoints replace it; this avoids presenting demo flags as authoritative
+account activation.
 
 ## Demonstration only
 

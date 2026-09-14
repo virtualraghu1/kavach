@@ -43,12 +43,16 @@ export async function checkSupabaseConnection(): Promise<SupabaseConnectionResul
         error.code === "42P01" ||
         error.code === "PGRST205" ||
         /could not find the table|does not exist/i.test(error.message);
+      const protectedSchema =
+        error.code === "42501" || /permission denied/i.test(error.message);
       return {
         apiConnected: true,
-        schemaReady: false,
-        message: missingSchema
-          ? "Kavach Supabase is connected. Phase 2 database tables have not been installed."
-          : "Kavach Supabase is reachable, but the application schema is not available to this client.",
+        schemaReady: protectedSchema,
+        message: protectedSchema
+          ? "Kavach Supabase is connected. The Phase 2 schema is installed and requires sign-in."
+          : missingSchema
+            ? "Kavach Supabase is connected. Phase 2 database tables have not been installed."
+            : "Kavach Supabase is reachable, but the application schema is not available to this client.",
       };
     }
 

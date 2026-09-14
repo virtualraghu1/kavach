@@ -30,8 +30,11 @@ Kavach uses the Supabase project designated by the project owner:
 - Project reference: `xvzymtkfzkoskljcexai`
 - Dashboard: https://supabase.com/dashboard/project/xvzymtkfzkoskljcexai
 
-This records the database selection. Application connectivity and schema have
-not yet been configured or verified in this repository.
+The Phase 2 feature branch contains the Supabase CLI configuration and the
+accounts/membership migration. The schema was applied to the confirmed Kavach
+project on 14 September 2026; no Auth users or resident fixtures were created.
+See [`docs/phase2-database-migration.md`](docs/phase2-database-migration.md) for
+scope, verification and recovery boundaries.
 
 ## Project materials
 
