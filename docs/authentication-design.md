@@ -36,7 +36,7 @@ preserved.
 
 ## Sign-in request
 
-`POST /functions/v1/account-api` currently accepts only:
+`POST /functions/v1/account-api` accepts the public sign-in action:
 
 ```json
 {
@@ -60,10 +60,32 @@ the normal Supabase session and database policies.
 Every attempt consumes two database-backed limits: one for the normalised
 identifier and one for the client network address. Each stored bucket is an
 HMAC-SHA-256 digest with a server-only pepper, so raw usernames, emails and IP
-addresses are not written to the rate-limit table. The current conservative
-default permits five attempts in fifteen minutes and blocks further attempts
-for fifteen minutes. The database operation is atomic and survives serverless
-instance changes.
+addresses are not written to the rate-limit table. The current source permits
+ten attempts per identifier and fifty attempts per network bucket in fifteen
+minutes, then blocks further attempts for fifteen minutes. The database
+operation is atomic and survives serverless instance changes. A later
+refinement should record failures separately so successful routine sign-ins do
+not consume the same failure budget.
+
+## Authenticated workspace and user management
+
+All other actions require a bearer access token. The Edge Function verifies the
+token with Supabase Auth, extracts its `session_id`, and asks a service-only
+database function to confirm that the exact Auth session belongs to an active
+Kavach account and predates no revocation boundary.
+
+The `workspace` action derives roles and community scope from current database
+records. It returns only the communities, residents and account states allowed
+for that role. Owner mutations are restricted to:
+
+- creating a community;
+- enabling or disabling a community; and
+- enabling or disabling an existing society-administrator account.
+
+The function rechecks the owner role before every mutation and writes a security
+event. A client-provided role or community identifier never establishes
+permission. Disabling a staff account also records `revoked_before`, while RLS
+and authenticated APIs reject disabled accounts immediately.
 
 ## Activation acknowledgement
 
@@ -117,8 +139,8 @@ The service-role key and pepper must never use a `VITE_`, `EXPO_PUBLIC_`,
 
 ## Current boundary and next checks
 
-The database RPC migration and version 1 of the `account-api` Edge Function are
-installed in the confirmed Kavach production project. Its exact-origin
+The first sign-in RPC migration and version 2 of the sign-in-only `account-api`
+Edge Function were installed in the confirmed Kavach production project. Its exact-origin
 allowlist and rate-limit pepper are configured as server secrets. A live request
 with fictional invalid credentials returned the generic sign-in error, correct
 production-origin CORS and `no-store` headers; a disallowed origin was rejected.
@@ -132,5 +154,7 @@ There are still no Auth users or live resident accounts. Before provisioning:
    fixtures; and
 5. review access-token lifetime and server-side revocation checks for recovery.
 
-Setup grants, assisted recovery, staff account management and native session
-storage are intentionally handled in subsequent working slices.
+The `web_auth_user_management` migration and expanded Edge Function in this
+feature branch have been type-checked and tested locally but have **not** been
+applied or deployed. Setup grants, assisted recovery, staff account creation and
+native session storage remain subsequent working slices.

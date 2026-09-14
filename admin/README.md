@@ -1,6 +1,9 @@
-# Kavach — Phase 1 colony office
+# Kavach — secure web accounts and colony office
 
-A local React + TypeScript + Vite + Tailwind frontend prototype, based on the approved third enrollment mock. All resident data and phone connections are fictional demonstrations.
+A React + TypeScript + Vite web application for Kavach account access and
+community administration. The default route is now a Supabase-backed sign-in
+screen. The original fictional enrollment prototype is retained only as an
+explicit development preview.
 
 ## Run locally
 
@@ -12,7 +15,9 @@ npm ci
 npm run dev -- --host 127.0.0.1 --port 4173
 ```
 
-Open http://127.0.0.1:4173. Default route is Enrollment drive. Hash navigation supports Residents, Enrollment drive, Active SOS and Settings without a server router.
+Open http://127.0.0.1:4173. The default screen is **Sign in to continue**.
+Username/email resolution happens only in the server-side `account-api`; the
+browser receives and persists the normal Supabase session.
 
 Copy `.env.example` to `.env.local` and provide the Kavach project URL and
 publishable key. Only public client configuration belongs in `VITE_` variables;
@@ -23,11 +28,45 @@ npm run typecheck
 npm run lint
 npm test
 npm run build
+npm run test:sites
 ```
 
 Production files are emitted to `dist/client`. The inherited template also generates Sites packaging; no deployment has been performed.
 
-## Functional workflows
+## Secure account workflows
+
+- Username or verified email plus password sign-in through Supabase Auth.
+- Generic credential errors, server-side durable throttling and exact CORS
+  origin checks.
+- Session restoration and server validation of the current Auth session,
+  account status and revocation boundary.
+- Owner workspace for all Kavach communities, society administrators and
+  resident account states.
+- Owner-only community creation/status changes and society-administrator
+  account enable/disable actions. The server derives owner access from trusted
+  role records; no client-supplied role or community ID grants access.
+- Society administrators see only residents from assigned active communities.
+- Residents see only their own profile, community-office help, and the explicit
+  notice that emergency alerts are not enabled.
+- Responsive desktop/mobile layouts with keyboard-visible focus, labelled
+  password visibility, large touch controls and reduced-motion support.
+
+Staff account creation is deliberately not faked with a shared or temporary
+password. It becomes available with the next short-lived setup-grant slice.
+
+## Development-only previews
+
+These URLs use fictional, in-memory render fixtures and are compiled out of the
+production behavior:
+
+- `/?preview-role=owner`
+- `/?preview-role=staff`
+- `/?preview-role=resident`
+- `/?legacy-demo=1` for the original enrollment prototype
+
+Preview mutations are blocked. Do not use preview screens as backend evidence.
+
+## Legacy enrollment demo workflows
 
 - Search by name, house or mobile; filter six enrollment states.
 - Add incomplete drafts; edit details; warn on matching name + house. Multiple people can share a house or phone.
@@ -42,17 +81,22 @@ Production files are emitted to `dist/client`. The inherited template also gener
 
 ## Supabase connection
 
-The feature branch is configured locally for Kavach project
+The local environment is configured for Kavach project
 `ldexvxjccihecrclirof`. Settings performs a no-cache Auth health request and a
-read-only query for the expected `communities` table. The Phase 2 schema is
-installed and intentionally denies anonymous table access. The existing
-enrollment repository remains browser-local until authenticated server
-endpoints replace it; this avoids presenting demo flags as authoritative
-account activation.
+read-only query for the expected `communities` table. The first three Phase 2
+migrations and sign-in function were previously installed. The new
+`web_auth_user_management` migration and expanded function remain local until a
+separate production approval. The secure workspace therefore cannot be used
+against production until those two server changes are applied together.
 
 ## Demonstration only
 
-No physical phone connection, auth, server, OTP, SMS, push, geolocation, SOS delivery, payments or external service is implemented. The Active SOS page explicitly explains its later-phase status. Synthetic contacts start with `+91 000…` and must never be contacted. Profile portraits are extracted from the user-supplied fictional mock. Other avatars use initials.
+No physical phone connection, OTP, SMS, push, geolocation, SOS delivery,
+payments or emergency service is implemented. Authentication and account
+authorization are implemented in source, but this branch has not been deployed.
+Synthetic contacts start with `+91 000…` and must never be contacted. Profile
+portraits are extracted from the user-supplied fictional mock. Other avatars
+use initials.
 
 Use **Settings → Reset demo data → Reset demo data** to restore the original 15 records: 8 ready, 3 completed today, 2 needing details, 1 awaiting verification and 1 waiting for a phone. Completed-today counts use Asia/Kolkata and change with the date.
 
@@ -64,7 +108,9 @@ The storage key is `kavach:admin-demo:v1`. Data has a schema version and is vali
 
 - `src/domain.ts`: typed community, administrator, resident, verification, pairing and activity models; validation and derived statuses/counts.
 - `src/repository.ts`: replaceable mock repository, fixture creation, persistence and guarded transitions.
-- `src/App.tsx`: app shell, lightweight hash navigation and page composition.
+- `src/KavachApp.tsx`: secure sign-in gate and role-specific account workspaces.
+- `src/accountApi.ts`: validated browser contract for the account Edge Function.
+- `src/App.tsx`: retained development-only legacy enrollment demo.
 - `src/ActivationPanel.tsx`: selected resident, countdown and demo connection steps.
 - `src/ResidentForm.tsx`: add/edit and draft validation.
 - `src/ResidentDetail.tsx`: profile review, membership checks and activity.
@@ -79,10 +125,17 @@ The approved composition is retained. Search, filters, the persistent demo notic
 
 Verification is intentionally withdrawn after material identity, house, phone or consent edits. For this demo, a syntactically valid 10-digit Indian phone is sufficient and synthetic 000 numbers are accepted. A resident without a smartphone can still be registered and verified, but has assistance-needed status rather than phone-connected status.
 
-## Next phases (not implemented)
+## Next implementation slices
 
-1. **Phase 2:** real admin authentication and database, server-enforced community permissions, consent and audit records, and resident-side activation. Pairing needs server-issued short-lived single-use sessions, attempt limits, replay protection and verified device acknowledgement. Replace the repository and enforce every transition on the server.
-2. **Phase 3:** resident SOS experience, community alert delivery and responder acknowledgement, followed by a controlled pilot after reliability/privacy testing.
-3. **Phase 4:** optional physical SOS buttons and other hardware integrations.
+1. **Secure setup and recovery grants:** owner provisions staff; community staff
+   initiates eligible resident setup; users privately choose passwords; assisted
+   recovery revokes older sessions.
+2. **Real enrollment writes:** replace the legacy local repository with
+   allowlisted server transactions for resident details, consent and
+   verification.
+3. **Resident Expo app:** reuse the account API for onboarding, sign-in, own
+   profile and office help. No SOS permissions or readiness claims in this phase.
+4. **Later emergency phase:** SOS delivery and responder acknowledgement only
+   after reliability, privacy and device testing.
 
 The existing workspace provider information remains separate. This build does not connect to those projects or deploy publicly.

@@ -22,6 +22,31 @@ export function clientAddress(headers: Headers): string {
   return forwarded || headers.get("cf-connecting-ip") || "unknown";
 }
 
+export function jwtSessionId(token: string): string | null {
+  try {
+    const payload = token.split(".")[1];
+    if (!payload) return null;
+    const base64 = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, "=");
+    const value = JSON.parse(atob(padded)) as { session_id?: unknown };
+    return typeof value.session_id === "string" ? value.session_id : null;
+  } catch {
+    return null;
+  }
+}
+
+export function textInput(
+  value: unknown,
+  minimum: number,
+  maximum: number,
+): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  return normalized.length >= minimum && normalized.length <= maximum
+    ? normalized
+    : null;
+}
+
 function toHex(bytes: Uint8Array): string {
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join(
     "",

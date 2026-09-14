@@ -2,9 +2,13 @@
 
 Project workspace for Kavach, a community SOS concept.
 
-## Phase 1 admin prototype
+## Web accounts and admin interface
 
-The working local enrollment demo is in [`admin/`](admin/README.md). It uses fictional residents and simulated phone acknowledgement, with no external services connected. See its README for run commands, tested workflows and phase boundaries.
+The web application in [`admin/`](admin/README.md) now contains a Supabase-backed
+sign-in gate and role-specific workspaces for Kavach owner, society admin and
+resident accounts. The earlier fictional enrollment interface remains available
+only through an explicit development preview. See the admin README for run
+commands, verified screens and current deployment boundaries.
 
 ## Hosting
 
@@ -20,9 +24,9 @@ The Vercel project is connected to `virtualraghu1/kavach`, with `main` as the
 production branch. Root-level `vercel.json` installs dependencies in `admin/`,
 runs type checking, lint, tests and the build, and serves `admin/dist/client`.
 Production uses project-scoped Vercel environment variables for the Kavach
-Supabase URL and public publishable key. Only fictional data should be entered:
-the current enrollment repository remains browser-local and is not yet shared
-across devices.
+Supabase URL and public publishable key. Only fictional data should be entered
+until the new migration/function have been approved for a development or staging
+environment and the end-to-end authorization fixtures pass.
 
 ## Database
 
@@ -32,12 +36,13 @@ Kavach uses the Supabase project designated by the project owner:
 - Project reference: `ldexvxjccihecrclirof`
 - Dashboard: https://supabase.com/dashboard/project/ldexvxjccihecrclirof
 
-The Phase 2 feature branch contains the Supabase CLI configuration, the
-accounts/membership schema and a local server-side username/email sign-in
-service. All three database migrations were applied to the confirmed replacement
+The Phase 2 feature branches contain the Supabase CLI configuration, the
+accounts/membership schema and a server-side username/email sign-in service. The
+first three database migrations were applied to the confirmed replacement
 Kavach project on 14 September 2026. The reviewed sign-in Edge Function was
 deployed to that project on the same date. No Auth users or resident fixtures
-were created. See
+were created. The newest account-management migration and expanded function are
+local-only and not deployed. See
 [`docs/phase2-database-migration.md`](docs/phase2-database-migration.md) for
 database evidence and [`docs/authentication-design.md`](docs/authentication-design.md)
 for the no-email identity, throttling and deployment boundaries.

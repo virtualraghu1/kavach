@@ -36,7 +36,7 @@ const routeFromHash = (): Route => {
     ? (value as Route)
     : "enrollment";
 };
-export function App() {
+export function DemoApp() {
   const state = useSyncExternalStore(
     repository.subscribe,
     repository.getSnapshot,

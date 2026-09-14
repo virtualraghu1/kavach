@@ -2,8 +2,10 @@ import {
   allowedOrigin,
   clientAddress,
   hmacBucket,
+  jwtSessionId,
   normalizeIdentifier,
   passwordPolicyError,
+  textInput,
 } from "./core.ts";
 
 function assert(
@@ -40,4 +42,19 @@ Deno.test("creates stable, separated, non-plain-text rate-limit buckets", async 
   assert(first !== network);
   assert(!first.includes("lakshmi"));
   assert(/^\\x[0-9a-f]{64}$/.test(first));
+});
+
+Deno.test("reads only a valid session id claim from a JWT payload", () => {
+  const payload = btoa(JSON.stringify({ session_id: "session-123" }))
+    .replace(/=/g, "")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_");
+  assert(jwtSessionId(`header.${payload}.signature`) === "session-123");
+  assert(jwtSessionId("not-a-jwt") === null);
+});
+
+Deno.test("normalizes bounded management text", () => {
+  assert(textInput("  HIG BHEL  ", 3, 160) === "HIG BHEL");
+  assert(textInput("x", 3, 160) === null);
+  assert(textInput(42, 3, 160) === null);
 });
