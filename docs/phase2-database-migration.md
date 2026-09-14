@@ -66,15 +66,27 @@ restore in a non-production branch. If the empty schema must be removed before
 any real records are created, prepare and review a separate rollback migration;
 do not execute ad-hoc `drop ... cascade` commands.
 
+## Sign-in function deployment
+
+Version 1 of `account-api` was deployed on 14 September 2026 after the project
+list positively matched project `xvzymtkfzkoskljcexai` to organisation
+`nakqywjdrvcznouagawb`. Only the production/local origin allowlist and a random
+server-side rate-limit pepper were added. The platform-provided Supabase URL,
+publishable-key set and service credentials remain server-managed.
+
+Post-deployment checks confirmed the function is `ACTIVE`, uses its committed
+import map and has gateway JWT verification disabled because the same endpoint
+must accept a public sign-in request. The handler performs action-specific
+authentication. A fictional invalid login returned HTTP 401 with the generic
+error, the exact production CORS origin, and `no-store`/`no-cache` headers. An
+unapproved origin returned HTTP 403.
+
 ## Next gate
 
-No Edge Function was deployed and no owner, staff or resident Auth users were
-created. Before account provisioning:
+No owner, staff or resident Auth users were created. Before account
+provisioning:
 
-1. review the local sign-in service described in
-   [`authentication-design.md`](authentication-design.md);
-2. configure the exact-origin allowlist and server-only rate-limit pepper;
-3. approve and deploy the sign-in function;
-4. close public signup and verify current Auth settings;
-5. bootstrap the owner through the documented offline route; and
-6. test two-community isolation in a staging branch with fictional fixtures.
+1. close public signup and verify current Auth/email settings;
+2. implement and review the controlled owner-bootstrap operation;
+3. bootstrap the owner only after explicit account-target approval; and
+4. test two-community isolation in a staging branch with fictional fixtures.

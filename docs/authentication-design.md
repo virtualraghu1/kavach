@@ -117,15 +117,19 @@ The service-role key and pepper must never use a `VITE_`, `EXPO_PUBLIC_`,
 
 ## Current boundary and next checks
 
-The database RPC migration is installed in the confirmed Kavach production
-project, but the `account-api` Edge Function is intentionally not deployed.
-There are no Auth users or live resident accounts. Before deployment:
+The database RPC migration and version 1 of the `account-api` Edge Function are
+installed in the confirmed Kavach production project. Its exact-origin
+allowlist and rate-limit pepper are configured as server secrets. A live request
+with fictional invalid credentials returned the generic sign-in error, correct
+production-origin CORS and `no-store` headers; a disallowed origin was rejected.
 
-1. review and explicitly approve production function deployment and secrets;
-2. verify public signup and outbound email settings in Supabase Auth;
+There are still no Auth users or live resident accounts. Before provisioning:
+
+1. verify public signup and outbound email settings in Supabase Auth;
+2. implement and review the controlled owner-bootstrap operation;
 3. test the no-email flow with fictional users in a development/staging branch;
-4. test generic errors, throttling, disabled membership and cross-community
-   denial; and
+4. test throttling, disabled membership and cross-community denial with complete
+   fixtures; and
 5. review access-token lifetime and server-side revocation checks for recovery.
 
 Setup grants, assisted recovery, staff account management and native session
