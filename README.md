@@ -2,6 +2,19 @@
 
 Project workspace for Kavach, a community SOS concept.
 
+## Hosting
+
+Kavach uses the Vercel hosting details supplied by the project owner:
+
+- Primary domain: https://kavach-plum-one.vercel.app/
+- Deployment URL: https://kavach-r5vprn7s3-virtualraghu1-1039s-projects.vercel.app/
+- Deployment dashboard: https://vercel.com/virtualraghu1-1039s-projects/kavach/8DZEpTXfCUVUWUEZ2MUjtEdADF8N
+- Vercel project: `kavach`
+- Vercel team scope: `virtualraghu1-1039s-projects`
+
+These details record the supplied hosting configuration; deployment health,
+GitHub integration, and database connectivity have not yet been verified.
+
 ## Database
 
 Kavach uses the Supabase project designated by the project owner:
