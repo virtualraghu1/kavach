@@ -162,6 +162,15 @@ Before further provisioning:
    fixtures; and
 4. review access-token lifetime and server-side revocation checks for recovery.
 
-The `web_auth_user_management` migration, expanded Edge Function and web login
-are deployed. Setup grants, assisted recovery, staff account creation and native
+The `web_auth_user_management` migration, version 3 Edge Function and web login
+are deployed. The next source slice now implements owner-issued staff setup
+grants locally: the server creates an opaque pending Auth identity, returns one
+ten-minute numeric code, HMAC-protects the stored digest, limits incorrect
+attempts to five, revokes replaced grants and consumes a successful grant once.
+The staff member chooses the password privately through the public setup action;
+first authenticated sign-in, not code generation, activates the account.
+
+The staff setup migration, expanded function and updated web UI have passed a
+clean local Supabase migration and end-to-end test but are not deployed. Real
+resident enrollment writes, resident grants, assisted recovery and native
 session storage remain subsequent working slices.

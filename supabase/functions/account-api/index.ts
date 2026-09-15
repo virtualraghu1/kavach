@@ -5,8 +5,13 @@ import {
   clientAddress,
   GENERIC_SIGN_IN_ERROR,
   hmacBucket,
+  hmacDigest,
   jwtSessionId,
   normalizeIdentifier,
+  normalizeSetupCode,
+  normalizeUsername,
+  passwordPolicyError,
+  secureNumericCode,
   textInput,
 } from "./core.ts";
 
@@ -39,6 +44,14 @@ type RpcCall = (
   functionName: string,
   parameters?: Record<string, unknown>,
 ) => PromiseLike<RpcResult>;
+
+type StaffSetupGrant = {
+  accountId: string;
+  username: string;
+  code: string;
+  expiresAt: string;
+  communityId: string;
+};
 
 const noStoreHeaders = {
   "cache-control": "no-store, max-age=0",
@@ -128,6 +141,21 @@ async function getRoles(service: SupabaseClient, accountId: string) {
 
 function hasOwnerRole(roles: RoleRow[]) {
   return roles.some((assignment) => assignment.role === "owner");
+}
+
+async function staffSetupMaterial(grantPepper: string, username: string) {
+  const code = secureNumericCode();
+  return {
+    code,
+    digest: await hmacDigest(
+      grantPepper,
+      `setup:${username}`,
+      code,
+    ),
+    passwordOperationId: crypto.randomUUID(),
+    grantId: crypto.randomUUID(),
+    expiresAt: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
+  };
 }
 
 async function usernamesFor(service: SupabaseClient, accountIds: string[]) {
@@ -360,12 +388,166 @@ async function ownerMutation(
   service: SupabaseClient,
   account: AuthenticatedAccount,
   roles: RoleRow[],
+  grantPepper: string | null,
 ) {
   if (!hasOwnerRole(roles)) {
     return {
       status: 403,
       body: { error: "You do not have permission to do that." },
     };
+  }
+
+  if (body.action === "create_staff_setup") {
+    const displayName = textInput(body.displayName, 2, 160);
+    const username = normalizeUsername(body.username);
+    const communityId = typeof body.communityId === "string"
+      ? body.communityId
+      : null;
+    if (!displayName || !username || !communityId) {
+      return {
+        status: 400,
+        body: { error: "Enter a valid name, username and community." },
+      };
+    }
+    if (!grantPepper) {
+      return {
+        status: 503,
+        body: { error: "Account setup is not configured." },
+      };
+    }
+
+    const { data: community, error: communityError } = await service
+      .from("communities")
+      .select("id")
+      .eq("id", communityId)
+      .eq("active", true)
+      .maybeSingle();
+    if (communityError || !community) {
+      return { status: 404, body: { error: "Active community not found." } };
+    }
+
+    const { data: existing, error: existingError } = await service.rpc(
+      "server_resolve_login",
+      { p_identifier: username },
+    );
+    if (existingError) throw existingError;
+    if ((existing as LoginResolution[] | null)?.[0]) {
+      return {
+        status: 409,
+        body: { error: "That username is already in use." },
+      };
+    }
+
+    const material = await staffSetupMaterial(grantPepper, username);
+    const provisionOperationId = crypto.randomUUID();
+    const internalEmail = `auth-${crypto.randomUUID()}@accounts.kavach.invalid`;
+    const { data: createdAuth, error: createAuthError } = await service.auth
+      .admin
+      .createUser({
+        email: internalEmail,
+        email_confirm: true,
+        app_metadata: { kavach_internal_identity: true },
+      });
+    if (createAuthError || !createdAuth.user) {
+      return {
+        status: 503,
+        body: { error: "The administrator account could not be prepared." },
+      };
+    }
+
+    const { data: created, error: createError } = await service.rpc(
+      "server_create_staff_setup",
+      {
+        p_provision_operation_id: provisionOperationId,
+        p_password_operation_id: material.passwordOperationId,
+        p_grant_id: material.grantId,
+        p_auth_user_id: createdAuth.user.id,
+        p_auth_email: internalEmail,
+        p_username: username,
+        p_display_name: displayName,
+        p_community_id: communityId,
+        p_code_digest: material.digest,
+        p_expires_at: material.expiresAt,
+        p_created_by: account.account_link_id,
+      },
+    );
+    const createdRow = (created as Array<{ account_link_id: string }> | null)
+      ?.[0];
+    if (createError || !createdRow) {
+      await service.auth.admin.deleteUser(createdAuth.user.id).catch(() =>
+        null
+      );
+      return {
+        status: createError?.message.includes("username already in use")
+          ? 409
+          : 503,
+        body: {
+          error: createError?.message.includes("username already in use")
+            ? "That username is already in use."
+            : "The administrator account could not be prepared.",
+        },
+      };
+    }
+    const setup: StaffSetupGrant = {
+      accountId: createdRow.account_link_id,
+      username,
+      code: material.code,
+      expiresAt: material.expiresAt,
+      communityId,
+    };
+    return { status: 200, body: { setup } };
+  }
+
+  if (body.action === "regenerate_staff_setup") {
+    const accountId = typeof body.accountId === "string"
+      ? body.accountId
+      : null;
+    if (!accountId) {
+      return { status: 400, body: { error: "Select an administrator." } };
+    }
+    if (!grantPepper) {
+      return {
+        status: 503,
+        body: { error: "Account setup is not configured." },
+      };
+    }
+    const usernames = await usernamesFor(service, [accountId]);
+    const username = usernames.get(accountId);
+    if (!username) {
+      return { status: 404, body: { error: "Administrator not found." } };
+    }
+    const material = await staffSetupMaterial(grantPepper, username);
+    const { data, error } = await service.rpc("server_regenerate_staff_setup", {
+      p_account_link_id: accountId,
+      p_password_operation_id: material.passwordOperationId,
+      p_grant_id: material.grantId,
+      p_code_digest: material.digest,
+      p_expires_at: material.expiresAt,
+      p_created_by: account.account_link_id,
+    });
+    const row = (data as Array<{ grant_id: string }> | null)?.[0];
+    if (error || !row) {
+      return {
+        status: 400,
+        body: { error: "A new setup code could not be generated." },
+      };
+    }
+    const { data: assignment } = await service
+      .from("role_assignments")
+      .select("community_id")
+      .eq("account_link_id", accountId)
+      .eq("role", "community_staff")
+      .eq("active", true)
+      .limit(1)
+      .maybeSingle();
+    const setup: StaffSetupGrant = {
+      accountId,
+      username,
+      code: material.code,
+      expiresAt: material.expiresAt,
+      communityId: String(assignment?.community_id ?? ""),
+    };
+    return { status: 200, body: { setup } };
   }
 
   if (body.action === "create_community") {
@@ -514,6 +696,7 @@ async function handleRequest(request: Request): Promise<Response> {
     Deno.env.get("SUPABASE_ANON_KEY");
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   const pepper = Deno.env.get("KAVACH_RATE_LIMIT_PEPPER");
+  const grantPepper = Deno.env.get("KAVACH_GRANT_PEPPER") ?? null;
   if (!supabaseUrl || !publishableKey || !serviceRoleKey || !pepper) {
     return response({ error: "Service is not configured." }, 503, corsOrigin);
   }
@@ -624,6 +807,177 @@ async function handleRequest(request: Request): Promise<Response> {
     }
   }
 
+  if (body.action === "complete_account_setup") {
+    const username = normalizeUsername(body.username);
+    const code = normalizeSetupCode(body.code);
+    const passwordError = passwordPolicyError(body.password);
+    if (!username || !code || passwordError || !grantPepper) {
+      return response(
+        {
+          error: passwordError ??
+            (grantPepper
+              ? "Enter your username and six-digit setup code."
+              : "Account setup is not configured."),
+        },
+        grantPepper ? 400 : 503,
+        corsOrigin,
+      );
+    }
+    try {
+      const [identifierLimit, networkLimit] = await Promise.all([
+        consumeRateLimit(
+          rpc,
+          await hmacBucket(pepper, "identifier", `setup:${username}`),
+          "setup_identifier",
+          5,
+        ),
+        consumeRateLimit(
+          rpc,
+          await hmacBucket(pepper, "network", clientAddress(request.headers)),
+          "setup_network",
+          20,
+        ),
+      ]);
+      if (!identifierLimit.allowed || !networkLimit.allowed) {
+        const retryAfter = Math.max(
+          identifierLimit.retry_after_seconds,
+          networkLimit.retry_after_seconds,
+        );
+        const limited = response(
+          {
+            error:
+              "Too many attempts. Please wait or ask the office for a new code.",
+          },
+          429,
+          corsOrigin,
+        );
+        limited.headers.set("retry-after", String(retryAfter));
+        return limited;
+      }
+
+      const digest = await hmacDigest(
+        grantPepper,
+        `setup:${username}`,
+        code,
+      );
+      const { data: begun, error: beginError } = await service.rpc(
+        "server_begin_setup_redemption",
+        { p_username: username, p_code_digest: digest },
+      );
+      const grant = (begun as
+        | Array<{
+          redemption_status: string;
+          auth_user_id: string | null;
+          operation_id: string | null;
+        }>
+        | null)?.[0];
+      if (beginError || !grant) {
+        throw beginError ?? new Error("grant_unavailable");
+      }
+      const statusMessages: Record<string, { status: number; error: string }> =
+        {
+          invalid: {
+            status: 400,
+            error: "The username or setup code is incorrect.",
+          },
+          expired: {
+            status: 410,
+            error:
+              "This setup code has expired. Ask the office for a new code.",
+          },
+          blocked: {
+            status: 429,
+            error: "This setup code is blocked. Ask the office for a new code.",
+          },
+          used: {
+            status: 409,
+            error: "This setup code has already been used. Return to sign in.",
+          },
+          in_progress: {
+            status: 409,
+            error: "This setup needs help from the community office.",
+          },
+        };
+      if (grant.redemption_status !== "claimed") {
+        const failure = statusMessages[grant.redemption_status] ??
+          statusMessages.invalid;
+        return response({ error: failure.error }, failure.status, corsOrigin);
+      }
+      if (!grant.auth_user_id || !grant.operation_id) {
+        throw new Error("grant_target_missing");
+      }
+
+      let passwordUpdated = false;
+      try {
+        const { error: passwordUpdateError } = await service.auth.admin
+          .updateUserById(grant.auth_user_id, {
+            password: body.password as string,
+          });
+        if (passwordUpdateError) {
+          await service.rpc("server_finish_setup_redemption", {
+            p_operation_id: grant.operation_id,
+            p_outcome: "failed",
+            p_error_code: "auth_password_rejected",
+          });
+          return response(
+            {
+              error:
+                "Your password could not be saved. Ask the office for a new setup code.",
+            },
+            400,
+            corsOrigin,
+          );
+        }
+        passwordUpdated = true;
+        const { data: finished, error: finishError } = await service.rpc(
+          "server_finish_setup_redemption",
+          {
+            p_operation_id: grant.operation_id,
+            p_outcome: "completed",
+            p_error_code: null,
+          },
+        );
+        if (finishError || finished !== true) {
+          await service.rpc("server_finish_setup_redemption", {
+            p_operation_id: grant.operation_id,
+            p_outcome: "needs_reconciliation",
+            p_error_code: "setup_finalize_uncertain",
+          });
+          throw new Error("setup_finalize_uncertain");
+        }
+      } catch {
+        if (!passwordUpdated) {
+          await service.rpc("server_finish_setup_redemption", {
+            p_operation_id: grant.operation_id,
+            p_outcome: "needs_reconciliation",
+            p_error_code: "auth_update_uncertain",
+          });
+        }
+        return response(
+          {
+            error:
+              "Account setup could not be completed. Please ask the office for help.",
+          },
+          503,
+          corsOrigin,
+        );
+      }
+      return response(
+        { completed: true, username },
+        200,
+        corsOrigin,
+      );
+    } catch {
+      return response(
+        {
+          error: "Account setup is temporarily unavailable. Please try again.",
+        },
+        503,
+        corsOrigin,
+      );
+    }
+  }
+
   const account = await authenticate(request, publicClient, service);
   if (!account) {
     return response(
@@ -642,9 +996,22 @@ async function handleRequest(request: Request): Promise<Response> {
       );
     }
     const roles = await getRoles(service, account.account_link_id);
-    const result = await ownerMutation(body, service, account, roles);
+    const result = await ownerMutation(
+      body,
+      service,
+      account,
+      roles,
+      grantPepper,
+    );
     return response(result.body, result.status, corsOrigin);
-  } catch {
+  } catch (reason) {
+    const errorCode = typeof reason === "object" && reason !== null &&
+        "code" in reason
+      ? String(reason.code).slice(0, 40)
+      : reason instanceof Error
+      ? reason.name
+      : "unknown";
+    console.error(JSON.stringify({ event: "account_api_failure", errorCode }));
     return response(
       { error: "Kavach could not complete this request. Please try again." },
       503,

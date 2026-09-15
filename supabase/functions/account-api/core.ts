@@ -8,13 +8,40 @@ export function normalizeIdentifier(value: unknown): string | null {
   return normalized;
 }
 
+export function normalizeUsername(value: unknown): string | null {
+  const normalized = normalizeIdentifier(value);
+  return normalized && /^[a-z][a-z0-9._-]{3,31}$/.test(normalized)
+    ? normalized
+    : null;
+}
+
+export function normalizeSetupCode(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.replace(/\s/g, "");
+  return /^\d{6}$/.test(normalized) ? normalized : null;
+}
+
 export function passwordPolicyError(value: unknown): string | null {
   if (typeof value !== "string") return "Enter your password.";
-  if (value.length < 12) {
-    return "Use at least 12 characters. A memorable passphrase is welcome.";
+  if (value.length < 6) {
+    return "Use at least 6 characters.";
   }
   if (value.length > 128) return "Use no more than 128 characters.";
   return null;
+}
+
+export function secureNumericCode(
+  randomValues: (values: Uint32Array) => Uint32Array = (values) =>
+    crypto.getRandomValues(values),
+) {
+  const range = 1_000_000;
+  const maximum = 0x1_0000_0000;
+  const unbiasedLimit = Math.floor(maximum / range) * range;
+  const values = new Uint32Array(1);
+  do {
+    randomValues(values);
+  } while (values[0] >= unbiasedLimit);
+  return String(values[0] % range).padStart(6, "0");
 }
 
 export function clientAddress(headers: Headers): string {
@@ -53,9 +80,9 @@ function toHex(bytes: Uint8Array): string {
   );
 }
 
-export async function hmacBucket(
+export async function hmacDigest(
   pepper: string,
-  dimension: "identifier" | "network",
+  context: string,
   value: string,
 ): Promise<string> {
   const encoder = new TextEncoder();
@@ -69,9 +96,17 @@ export async function hmacBucket(
   const digest = await crypto.subtle.sign(
     "HMAC",
     key,
-    encoder.encode(`${dimension}:${value}`),
+    encoder.encode(`${context}:${value}`),
   );
   return `\\x${toHex(new Uint8Array(digest))}`;
+}
+
+export async function hmacBucket(
+  pepper: string,
+  dimension: "identifier" | "network",
+  value: string,
+): Promise<string> {
+  return hmacDigest(pepper, dimension, value);
 }
 
 export function allowedOrigin(

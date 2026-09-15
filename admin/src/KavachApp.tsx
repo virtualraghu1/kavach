@@ -22,8 +22,12 @@ import {
 import {
   AccountApiError,
   accountMutation,
+  completeAccountSetup,
+  createStaffSetup,
   loadWorkspace,
+  regenerateStaffSetup,
   signIn,
+  type StaffSetupGrant,
   type Workspace,
   type WorkspaceResident,
 } from "./accountApi";
@@ -192,10 +196,16 @@ function Brand({ subtitle }: { subtitle: string }) {
 
 function LoginScreen({
   onSignIn,
+  onCompleteSetup,
   busy,
   error,
 }: {
   onSignIn: (identifier: string, password: string) => Promise<void>;
+  onCompleteSetup: (
+    username: string,
+    code: string,
+    password: string,
+  ) => Promise<void>;
   busy: boolean;
   error: string;
 }) {
@@ -307,7 +317,16 @@ function LoginScreen({
             </p>
           </>
         ) : (
-          <AccountHelp view={view} onBack={() => setView("sign-in")} />
+          <AccountHelp
+            view={view}
+            onBack={() => setView("sign-in")}
+            onCompleteSetup={onCompleteSetup}
+            onSetupFinished={(username) => {
+              setIdentifier(username);
+              setPassword("");
+              setView("sign-in");
+            }}
+          />
         )}
       </section>
     </main>
@@ -317,11 +336,48 @@ function LoginScreen({
 function AccountHelp({
   view,
   onBack,
+  onCompleteSetup,
+  onSetupFinished,
 }: {
   view: Exclude<SignInView, "sign-in">;
   onBack: () => void;
+  onCompleteSetup: (
+    username: string,
+    code: string,
+    password: string,
+  ) => Promise<void>;
+  onSetupFinished: (username: string) => void;
 }) {
   const setup = view === "setup";
+  const [username, setUsername] = useState("");
+  const [code, setCode] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmation, setConfirmation] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [completed, setCompleted] = useState(false);
+
+  if (setup && completed) {
+    return (
+      <div className="account-help setup-complete" role="status">
+        <span className="help-icon success-icon">
+          <CheckCircle size={36} weight="fill" />
+        </span>
+        <h1 id="auth-title">Password setup completed</h1>
+        <p>
+          Your account is ready. Sign in with your username and the password
+          you just chose.
+        </p>
+        <button
+          className="primary auth-back"
+          onClick={() => onSetupFinished(username.trim().toLowerCase())}
+        >
+          Continue to sign in
+        </button>
+      </div>
+    );
+  }
   return (
     <div className="account-help">
       <span className="help-icon">
@@ -335,16 +391,115 @@ function AccountHelp({
           ? "Account setup begins with an in-person code created by authorised community-office staff."
           : "For your safety, the community office assists with password recovery after checking your identity in person."}
       </p>
-      <div className="office-help-box">
-        <strong>HIG community office</strong>
-        <span>Please visit the office for account help.</span>
-        <small>No phone number or opening hours have been configured.</small>
-      </div>
-      <p className="muted small">
-        {setup
-          ? "Secure code redemption and private password creation are the next implementation slice. Staff cannot set or view your permanent password."
-          : "The office will issue a short-lived recovery code. Kavach will never display your existing password."}
-      </p>
+      {setup ? (
+        <form
+          className="auth-form setup-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            setError("");
+            if (password !== confirmation) {
+              setError("The two passwords do not match.");
+              return;
+            }
+            setBusy(true);
+            void onCompleteSetup(username, code, password)
+              .then(() => setCompleted(true))
+              .catch((reason: unknown) =>
+                setError(
+                  reason instanceof Error
+                    ? reason.message
+                    : "Account setup could not be completed.",
+                ),
+              )
+              .finally(() => setBusy(false));
+          }}
+        >
+          {error && (
+            <div className="notice notice-error" role="alert">
+              <WarningCircle size={21} /> <span>{error}</span>
+            </div>
+          )}
+          <label className="field">
+            <span>Username</span>
+            <input
+              autoCapitalize="none"
+              autoComplete="username"
+              value={username}
+              onChange={(event) => setUsername(event.target.value)}
+              required
+              disabled={busy}
+            />
+          </label>
+          <label className="field">
+            <span>Six-digit setup code</span>
+            <input
+              autoComplete="one-time-code"
+              inputMode="numeric"
+              pattern="[0-9 ]{6,7}"
+              value={code}
+              onChange={(event) => setCode(event.target.value)}
+              required
+              disabled={busy}
+            />
+          </label>
+          <label className="field password-field">
+            <span>Choose a password</span>
+            <span className="password-control">
+              <input
+                autoComplete="new-password"
+                type={showPassword ? "text" : "password"}
+                minLength={6}
+                maxLength={128}
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                required
+                disabled={busy}
+              />
+              <button
+                type="button"
+                className="password-toggle"
+                onClick={() => setShowPassword((shown) => !shown)}
+                aria-label={showPassword ? "Hide password" : "Show password"}
+              >
+                {showPassword ? <EyeSlash size={22} /> : <Eye size={22} />}
+                <span>{showPassword ? "Hide" : "Show"}</span>
+              </button>
+            </span>
+            <small>Use at least 6 characters.</small>
+          </label>
+          <label className="field">
+            <span>Confirm password</span>
+            <input
+              autoComplete="new-password"
+              type={showPassword ? "text" : "password"}
+              minLength={6}
+              maxLength={128}
+              value={confirmation}
+              onChange={(event) => setConfirmation(event.target.value)}
+              required
+              disabled={busy}
+            />
+          </label>
+          <button className="primary auth-submit" disabled={busy}>
+            {busy ? "Saving password…" : "Set my password"}
+          </button>
+          <p className="muted small">
+            The office cannot see the password you choose.
+          </p>
+        </form>
+      ) : (
+        <>
+          <div className="office-help-box">
+            <strong>HIG community office</strong>
+            <span>Please visit the office for account help.</span>
+            <small>No phone number or opening hours have been configured.</small>
+          </div>
+          <p className="muted small">
+            The office will issue a short-lived recovery code. Kavach will
+            never display your existing password.
+          </p>
+        </>
+      )}
       <button className="secondary auth-back" onClick={onBack}>
         Back to sign in
       </button>
@@ -446,7 +601,14 @@ export function App() {
 
   if (!workspace || (!session && !previewRole)) {
     return (
-      <LoginScreen onSignIn={handleSignIn} busy={signingIn} error={error} />
+      <LoginScreen
+        onSignIn={handleSignIn}
+        onCompleteSetup={async (username, code, password) => {
+          await completeAccountSetup(username, code, password);
+        }}
+        busy={signingIn}
+        error={error}
+      />
     );
   }
 
@@ -469,6 +631,26 @@ export function App() {
         await accountMutation(action, values, session.access_token);
         await refreshWorkspace(session);
       }}
+      onCreateStaff={async (values) => {
+        if (!session || preview) {
+          throw new AccountApiError(
+            "Changes are disabled in the development preview.",
+            400,
+          );
+        }
+        const setup = await createStaffSetup(values, session.access_token);
+        await refreshWorkspace(session);
+        return setup;
+      }}
+      onRegenerateStaff={async (accountId) => {
+        if (!session || preview) {
+          throw new AccountApiError(
+            "Changes are disabled in the development preview.",
+            400,
+          );
+        }
+        return regenerateStaffSetup(accountId, session.access_token);
+      }}
       onSignOut={async () => {
         if (preview) {
           location.href = location.pathname;
@@ -487,6 +669,8 @@ function AuthenticatedShell({
   preview,
   onRefresh,
   onMutate,
+  onCreateStaff,
+  onRegenerateStaff,
   onSignOut,
 }: {
   workspace: Workspace;
@@ -497,6 +681,12 @@ function AuthenticatedShell({
       "create_community" | "set_community_status" | "set_staff_account_status",
     values: Record<string, unknown>,
   ) => Promise<void>;
+  onCreateStaff: (values: {
+    displayName: string;
+    username: string;
+    communityId: string;
+  }) => Promise<StaffSetupGrant>;
+  onRegenerateStaff: (accountId: string) => Promise<StaffSetupGrant>;
   onSignOut: () => Promise<void>;
 }) {
   const owner = workspace.roles.some((role) => role.role === "owner");
@@ -652,6 +842,8 @@ function AuthenticatedShell({
               busy={busy}
               run={run}
               onMutate={onMutate}
+              onCreateStaff={onCreateStaff}
+              onRegenerateStaff={onRegenerateStaff}
             />
           ) : route === "residents" || route === "enrollment" ? (
             <ResidentsPage
@@ -896,6 +1088,8 @@ function AdministratorsPage({
   busy,
   run,
   onMutate,
+  onCreateStaff,
+  onRegenerateStaff,
 }: {
   workspace: Workspace;
   busy: boolean;
@@ -904,11 +1098,46 @@ function AdministratorsPage({
     action: "set_staff_account_status",
     values: Record<string, unknown>,
   ) => Promise<void>;
+  onCreateStaff: (values: {
+    displayName: string;
+    username: string;
+    communityId: string;
+  }) => Promise<StaffSetupGrant>;
+  onRegenerateStaff: (accountId: string) => Promise<StaffSetupGrant>;
 }) {
-  const [setupInfo, setSetupInfo] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const [displayName, setDisplayName] = useState("");
+  const [username, setUsername] = useState("");
+  const [communityId, setCommunityId] = useState(
+    workspace.communities.find((community) => community.active)?.id ?? "",
+  );
+  const [submitting, setSubmitting] = useState(false);
+  const [dialogError, setDialogError] = useState("");
+  const [setupGrant, setSetupGrant] = useState<StaffSetupGrant | null>(null);
   const communityName = (communityId: string) =>
     workspace.communities.find((community) => community.id === communityId)
       ?.displayName ?? "Unknown community";
+  const closeDialog = () => {
+    setAdding(false);
+    setSetupGrant(null);
+    setDialogError("");
+  };
+  const showGrant = async (work: () => Promise<StaffSetupGrant>) => {
+    setSubmitting(true);
+    setDialogError("");
+    try {
+      setSetupGrant(await work());
+      setAdding(true);
+    } catch (reason) {
+      setDialogError(
+        reason instanceof Error
+          ? reason.message
+          : "The setup code could not be generated.",
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  };
   return (
     <section className="management-page">
       <div className="page-title-row">
@@ -919,7 +1148,16 @@ function AdministratorsPage({
             Control office access without sharing passwords.
           </p>
         </div>
-        <button className="primary" onClick={() => setSetupInfo(true)}>
+        <button
+          className="primary"
+          onClick={() => {
+            setDisplayName("");
+            setUsername("");
+            setSetupGrant(null);
+            setDialogError("");
+            setAdding(true);
+          }}
+        >
           <Plus size={20} weight="bold" /> Add society administrator
         </button>
       </div>
@@ -957,24 +1195,34 @@ function AdministratorsPage({
               </StatusPill>
               <button
                 className={
-                  staff.status === "disabled" ? "secondary" : "secondary danger"
+                  staff.status === "disabled"
+                    ? "secondary"
+                    : staff.status === "pending"
+                      ? "secondary"
+                      : "secondary danger"
                 }
-                disabled={busy || staff.status === "pending"}
+                disabled={busy || submitting}
                 onClick={() =>
-                  void run(
-                    () =>
-                      onMutate("set_staff_account_status", {
-                        accountId: staff.accountId,
-                        status:
-                          staff.status === "disabled" ? "active" : "disabled",
-                      }),
-                    staff.status === "disabled"
-                      ? "Administrator access enabled."
-                      : "Administrator access disabled.",
-                  )
+                  staff.status === "pending"
+                    ? void showGrant(() => onRegenerateStaff(staff.accountId))
+                    : void run(
+                        () =>
+                          onMutate("set_staff_account_status", {
+                            accountId: staff.accountId,
+                            status:
+                              staff.status === "disabled"
+                                ? "active"
+                                : "disabled",
+                          }),
+                        staff.status === "disabled"
+                          ? "Administrator access enabled."
+                          : "Administrator access disabled.",
+                      )
                 }
               >
-                {staff.status === "disabled"
+                {staff.status === "pending"
+                  ? "Generate new code"
+                  : staff.status === "disabled"
                   ? "Enable access"
                   : "Disable access"}
               </button>
@@ -998,26 +1246,125 @@ function AdministratorsPage({
           </p>
         </div>
       </div>
-      {setupInfo && (
-        <Dialog title="Secure staff setup" onClose={() => setSetupInfo(false)}>
-          <p>
-            Creating a society administrator requires the same short-lived,
-            single-use setup grant used for residents. That grant redemption is
-            intentionally separated from this role-management slice.
-          </p>
-          <div className="notice">
-            <Info size={21} />
-            <span>
-              No temporary or shared password will be generated. This prevents
-              the owner or office from learning a staff member’s permanent
-              password.
-            </span>
-          </div>
-          <div className="dialog-actions">
-            <button className="primary" onClick={() => setSetupInfo(false)}>
-              Understood
-            </button>
-          </div>
+      {dialogError && !adding && (
+        <div className="error-bar" role="alert">
+          <WarningCircle size={22} /> {dialogError}
+        </div>
+      )}
+      {adding && (
+        <Dialog
+          title={setupGrant ? "Administrator setup code" : "Add society administrator"}
+          onClose={closeDialog}
+        >
+          {setupGrant ? (
+            <div className="staff-setup-result">
+              <p className="dialog-intro">
+                Ask <strong>@{setupGrant.username}</strong> to open Kavach and
+                choose <strong>Set up my account</strong>.
+              </p>
+              <div className="setup-code-panel" aria-label="Six-digit setup code">
+                <span>Setup code</span>
+                <strong>{setupGrant.code.slice(0, 3)} {setupGrant.code.slice(3)}</strong>
+                <small>
+                  Expires at {new Intl.DateTimeFormat("en-IN", {
+                    hour: "numeric",
+                    minute: "2-digit",
+                    timeZone: "Asia/Kolkata",
+                  }).format(new Date(setupGrant.expiresAt))} IST
+                </small>
+              </div>
+              <div className="notice">
+                <WarningCircle size={21} />
+                <span>
+                  Show this code in person. It works once and must not be sent
+                  by message. Kavach will never show the administrator’s
+                  password.
+                </span>
+              </div>
+              <div className="dialog-actions">
+                <button className="primary" onClick={closeDialog}>
+                  Done
+                </button>
+              </div>
+            </div>
+          ) : (
+            <form
+              className="staff-setup-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void showGrant(() =>
+                  onCreateStaff({ displayName, username, communityId }),
+                );
+              }}
+            >
+              <p className="dialog-intro">
+                The administrator will choose their own password using a
+                ten-minute, single-use code.
+              </p>
+              {dialogError && (
+                <div className="notice notice-error" role="alert">
+                  <WarningCircle size={21} /> <span>{dialogError}</span>
+                </div>
+              )}
+              <label className="field">
+                <span>Full name</span>
+                <input
+                  autoComplete="name"
+                  value={displayName}
+                  onChange={(event) => setDisplayName(event.target.value)}
+                  required
+                  minLength={2}
+                  maxLength={160}
+                  disabled={submitting}
+                />
+              </label>
+              <label className="field">
+                <span>Username</span>
+                <input
+                  autoCapitalize="none"
+                  autoComplete="off"
+                  value={username}
+                  onChange={(event) => setUsername(event.target.value.toLowerCase())}
+                  pattern="[a-z](?:[a-z0-9._]|-){3,31}"
+                  required
+                  disabled={submitting}
+                />
+                <small>4–32 characters. Start with a letter.</small>
+              </label>
+              <label className="field">
+                <span>Community</span>
+                <select
+                  value={communityId}
+                  onChange={(event) => setCommunityId(event.target.value)}
+                  required
+                  disabled={submitting}
+                >
+                  {workspace.communities
+                    .filter((community) => community.active)
+                    .map((community) => (
+                      <option key={community.id} value={community.id}>
+                        {community.displayName}
+                      </option>
+                    ))}
+                </select>
+              </label>
+              <div className="notice">
+                <LockKey size={21} />
+                <span>
+                  This grants Society Admin access only to the selected
+                  community. It does not grant Super Admin access.
+                </span>
+              </div>
+              <div className="dialog-actions">
+                <button type="button" className="secondary" onClick={closeDialog}>
+                  Cancel
+                </button>
+                <button className="primary" disabled={submitting || !communityId}>
+                  {submitting ? "Preparing account…" : "Create setup code"}
+                </button>
+              </div>
+            </form>
+          )}
         </Dialog>
       )}
     </section>

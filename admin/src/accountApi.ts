@@ -62,6 +62,16 @@ export type WorkspaceCommunity = z.infer<typeof communitySchema>;
 export type WorkspaceResident = z.infer<typeof residentSchema>;
 export type WorkspaceStaff = z.infer<typeof staffSchema>;
 
+const staffSetupGrantSchema = z.object({
+  accountId: z.string().uuid(),
+  username: z.string(),
+  code: z.string().regex(/^\d{6}$/),
+  expiresAt: z.string(),
+  communityId: z.string().uuid(),
+});
+
+export type StaffSetupGrant = z.infer<typeof staffSetupGrantSchema>;
+
 type SessionTokens = {
   access_token: string;
   refresh_token: string;
@@ -145,9 +155,49 @@ export async function loadWorkspace(accessToken: string) {
   return workspaceSchema.parse(payload.workspace);
 }
 
+export async function completeAccountSetup(
+  username: string,
+  code: string,
+  password: string,
+) {
+  const payload = await request({
+    action: "complete_account_setup",
+    username,
+    code,
+    password,
+  });
+  return z.object({ completed: z.literal(true), username: z.string() }).parse(
+    payload,
+  );
+}
+
+export async function createStaffSetup(
+  values: { displayName: string; username: string; communityId: string },
+  accessToken: string,
+) {
+  const payload = await request(
+    { action: "create_staff_setup", ...values },
+    accessToken,
+  );
+  return staffSetupGrantSchema.parse(payload.setup);
+}
+
+export async function regenerateStaffSetup(
+  accountId: string,
+  accessToken: string,
+) {
+  const payload = await request(
+    { action: "regenerate_staff_setup", accountId },
+    accessToken,
+  );
+  return staffSetupGrantSchema.parse(payload.setup);
+}
+
 export async function accountMutation(
   action:
-    "create_community" | "set_community_status" | "set_staff_account_status",
+    | "create_community"
+    | "set_community_status"
+    | "set_staff_account_status",
   values: Record<string, unknown>,
   accessToken: string,
 ) {

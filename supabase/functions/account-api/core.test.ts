@@ -2,9 +2,13 @@ import {
   allowedOrigin,
   clientAddress,
   hmacBucket,
+  hmacDigest,
   jwtSessionId,
   normalizeIdentifier,
+  normalizeSetupCode,
+  normalizeUsername,
   passwordPolicyError,
+  secureNumericCode,
   textInput,
 } from "./core.ts";
 
@@ -20,6 +24,20 @@ Deno.test("normalizes usernames and emails without touching passwords", () => {
   assert(normalizeIdentifier("A") === null);
   assert(passwordPolicyError(" untrimmed passphrase ") === null);
   assert(passwordPolicyError("short") !== null);
+  assert(passwordPolicyError("sixsix") === null);
+  assert(normalizeUsername("  Meena.Rao  ") === "meena.rao");
+  assert(normalizeUsername("meena@example.com") === null);
+  assert(normalizeSetupCode("481 629") === "481629");
+  assert(normalizeSetupCode("48162") === null);
+});
+
+Deno.test("generates a six-digit setup code without modulo bias", () => {
+  const values = [4_294_000_000, 42];
+  const code = secureNumericCode((target) => {
+    target[0] = values.shift() ?? 0;
+    return target;
+  });
+  assert(code === "000042");
 });
 
 Deno.test("uses the first trusted forwarded client address", () => {
@@ -42,6 +60,21 @@ Deno.test("creates stable, separated, non-plain-text rate-limit buckets", async 
   assert(first !== network);
   assert(!first.includes("lakshmi"));
   assert(/^\\x[0-9a-f]{64}$/.test(first));
+});
+
+Deno.test("binds grant digests to their purpose and username", async () => {
+  const first = await hmacDigest(
+    "grant-pepper",
+    "setup:meena.rao",
+    "481629",
+  );
+  const otherUser = await hmacDigest(
+    "grant-pepper",
+    "setup:anitha.reddy",
+    "481629",
+  );
+  assert(first !== otherUser);
+  assert(!first.includes("481629"));
 });
 
 Deno.test("reads only a valid session id claim from a JWT payload", () => {

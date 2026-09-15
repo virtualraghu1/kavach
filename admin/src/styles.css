@@ -1607,6 +1607,23 @@ legend small {
   display: grid;
   gap: 18px;
 }
+.setup-form {
+  margin-top: 4px;
+  gap: 17px;
+}
+.setup-form .notice {
+  margin: 0;
+}
+.setup-form .field small,
+.dialog .field small {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.success-icon {
+  background: #e7f7ee;
+  color: var(--green);
+}
 .help-icon {
   width: 62px;
   height: 62px;
@@ -1884,6 +1901,42 @@ legend small {
 .admin-assignments strong {
   font-size: 14px;
 }
+.staff-setup-result {
+  display: grid;
+  gap: 18px;
+}
+.staff-setup-form {
+  display: grid;
+  gap: 16px;
+}
+.staff-setup-form .notice,
+.staff-setup-form .dialog-actions {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+.setup-code-panel {
+  display: grid;
+  gap: 7px;
+  padding: 22px;
+  text-align: center;
+  background: #fcebea;
+  border: 1px solid #f3cfcd;
+  border-radius: 16px;
+}
+.setup-code-panel > span {
+  color: #744442;
+  font-weight: 700;
+}
+.setup-code-panel > strong {
+  color: var(--red);
+  font-size: clamp(43px, 7vw, 62px);
+  line-height: 1;
+  letter-spacing: 5px;
+}
+.setup-code-panel > small {
+  color: #5d4e4d;
+  font-size: 15px;
+}
 .permission-note {
   display: flex;
   gap: 13px;
@@ -2089,6 +2142,15 @@ legend small {
   }
   .auth-card h1 {
     font-size: 31px;
+  }
+  .account-help {
+    gap: 14px;
+  }
+  .setup-form {
+    gap: 13px;
+  }
+  .setup-form .field small {
+    margin-top: 3px;
   }
   .auth-copy {
     font-size: 16px;

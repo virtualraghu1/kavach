@@ -31,7 +31,9 @@ npm run build
 npm run test:sites
 ```
 
-Production files are emitted to `dist/client`. The inherited template also generates Sites packaging; no deployment has been performed.
+Production files are emitted to `dist/client`. The inherited template also
+generates Sites packaging. The existing authentication workspace is deployed;
+the staff setup changes in this branch are local only.
 
 ## Secure account workflows
 
@@ -50,9 +52,13 @@ Production files are emitted to `dist/client`. The inherited template also gener
   notice that emergency alerts are not enabled.
 - Responsive desktop/mobile layouts with keyboard-visible focus, labelled
   password visibility, large touch controls and reduced-motion support.
+- Owner-only society-administrator provisioning with a ten-minute, single-use
+  setup code. The administrator chooses the permanent password privately and
+  the pending account activates only after its first genuine sign-in.
 
-Staff account creation is deliberately not faked with a shared or temporary
-password. It becomes available with the next short-lived setup-grant slice.
+Setup codes are HMAC-protected, limited to five incorrect attempts and replaced
+when the owner regenerates a code. The browser receives the plain code only in
+the one setup response; it is not written to the database, logs or URLs.
 
 ## Development-only previews
 
@@ -85,15 +91,16 @@ The local environment is configured for Kavach project
 `ldexvxjccihecrclirof`. Settings performs a no-cache Auth health request and a
 read-only query for the expected `communities` table. The first three Phase 2
 migrations and sign-in function were previously installed. The new
-`web_auth_user_management` migration and expanded function remain local until a
-separate production approval. The secure workspace therefore cannot be used
-against production until those two server changes are applied together.
+The account schema, sign-in function, web account-management migration and
+owner workspace are installed in production. The staff setup-grant migration,
+expanded Edge Function and updated web UI are implemented and tested locally
+only. They require a separate production approval and must be released together.
 
 ## Demonstration only
 
 No physical phone connection, OTP, SMS, push, geolocation, SOS delivery,
-payments or emergency service is implemented. Authentication and account
-authorization are implemented in source, but this branch has not been deployed.
+payments or emergency service is implemented. Existing authentication is live;
+the new staff setup workflow in this branch has not been deployed.
 Synthetic contacts start with `+91 000…` and must never be contacted. Profile
 portraits are extracted from the user-supplied fictional mock. Other avatars
 use initials.
@@ -127,15 +134,17 @@ Verification is intentionally withdrawn after material identity, house, phone or
 
 ## Next implementation slices
 
-1. **Secure setup and recovery grants:** owner provisions staff; community staff
-   initiates eligible resident setup; users privately choose passwords; assisted
-   recovery revokes older sessions.
-2. **Real enrollment writes:** replace the legacy local repository with
-   allowlisted server transactions for resident details, consent and
-   verification.
+1. **Real enrollment writes and resident setup:** replace the legacy local
+   repository with allowlisted server transactions for resident details,
+   consent and verification, then reuse the tested grant lifecycle for eligible
+   residents.
+2. **Assisted recovery:** add in-person verification, recovery grants, password
+   replacement and tested session revocation without allowing staff recovery of
+   privileged accounts.
 3. **Resident Expo app:** reuse the account API for onboarding, sign-in, own
    profile and office help. No SOS permissions or readiness claims in this phase.
 4. **Later emergency phase:** SOS delivery and responder acknowledgement only
    after reliability, privacy and device testing.
 
-The existing workspace provider information remains separate. This build does not connect to those projects or deploy publicly.
+The Kavach Supabase and Vercel resources remain separate from unrelated
+projects. This staff setup slice is not yet deployed publicly.

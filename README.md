@@ -49,6 +49,14 @@ minimum. The first username-only owner account was bootstrapped and verified on
 database evidence and [`docs/authentication-design.md`](docs/authentication-design.md)
 for the no-email identity, throttling and deployment boundaries.
 
+The following local-only slice adds secure society-administrator provisioning:
+the owner issues a short-lived code, the administrator privately sets a password
+and the account activates on first sign-in. Its migration, Edge Function and web
+UI are implemented and tested against local Supabase on Colima, but have not
+been applied or deployed to production. See
+[`docs/staff-setup-slice.md`](docs/staff-setup-slice.md) for evidence and rollout
+requirements.
+
 Phase One of the next account-access milestone now includes a controlled,
 production-locked first-owner bootstrap migration and command. An earlier
 staging-branch attempt in the former Free organisation was rejected before
