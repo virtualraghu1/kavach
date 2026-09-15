@@ -1,6 +1,6 @@
 # Web authentication and user-management slice
 
-Status: implemented and locally verified on 14 September 2026; not deployed.
+Status: deployed to the confirmed Kavach production stack on 15 September 2026.
 
 ## Existing versus missing inventory
 
@@ -32,10 +32,9 @@ loads the active account and trusted database roles. The service-role client is
 server-only. Browser responses are `no-store`, origins are allowlisted, and
 mutations write security events.
 
-## Production gate
+## Production rollout
 
-Do not deploy only one half of this change. The following must be reviewed and
-applied together in an explicitly approved environment:
+The explicitly approved rollout applied these components together:
 
 1. `20260914164728_web_auth_user_management.sql`;
 2. the updated `account-api` function;
@@ -43,12 +42,13 @@ applied together in an explicitly approved environment:
 4. exact `KAVACH_ALLOWED_ORIGINS` configuration for the chosen preview or
    production URL.
 
-Before using real residents, confirm public signup is closed and create isolated
-fictional owner, staff, resident and second-community fixtures. Verify
+Hosted public signup is closed and the hosted password minimum is 12 characters.
+Before using real residents, create isolated fictional owner, staff, resident
+and second-community fixtures. Verify
 cross-community denial, disabled-account denial and session revocation through
 direct API requests—not only through the UI.
 
-## Verified locally
+## Verified
 
 - TypeScript type check and ESLint.
 - Web unit tests and production build.
@@ -57,9 +57,16 @@ direct API requests—not only through the UI.
 - Browser checks at 1440 x 900 and 390 x 844 for login, account-help,
   owner-management, staff-resident and resident-profile views.
 - No horizontal overflow or relevant browser console errors in those checks.
+- The production Vercel build completed the same type check, lint, 22 web tests
+  and production build before release.
+- The live production login rendered at desktop and 390 x 844, had no horizontal
+  overflow or browser console errors, and returned the expected generic error
+  for fictional invalid credentials.
+- The live Edge Function allowed the exact Kavach production origin, rejected an
+  unrelated origin, and returned `no-store` responses.
 
-The live username/password workflow was not executed because no fictional Auth
-fixtures exist and the new migration/function were not applied remotely.
+The successful username/password workflow was not executed because no fictional
+Auth fixtures exist. No production user was created as part of deployment.
 
 ## Visual fidelity ledger
 

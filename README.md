@@ -36,13 +36,14 @@ Kavach uses the Supabase project designated by the project owner:
 - Project reference: `ldexvxjccihecrclirof`
 - Dashboard: https://supabase.com/dashboard/project/ldexvxjccihecrclirof
 
-The Phase 2 feature branches contain the Supabase CLI configuration, the
+The Phase 2 branches contain the Supabase CLI configuration, the
 accounts/membership schema and a server-side username/email sign-in service. The
 first three database migrations were applied to the confirmed replacement
-Kavach project on 14 September 2026. The reviewed sign-in Edge Function was
-deployed to that project on the same date. No Auth users or resident fixtures
-were created. The newest account-management migration and expanded function are
-local-only and not deployed. See
+Kavach project on 14 September 2026. The web account-management migration and
+version 3 of the reviewed Edge Function were deployed on 15 September 2026,
+together with the production web login and role workspaces. Public Auth signup
+is closed and the hosted password minimum is 12 characters. No Auth users or
+resident fixtures were created. See
 [`docs/phase2-database-migration.md`](docs/phase2-database-migration.md) for
 database evidence and [`docs/authentication-design.md`](docs/authentication-design.md)
 for the no-email identity, throttling and deployment boundaries.

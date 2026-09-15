@@ -139,22 +139,25 @@ The service-role key and pepper must never use a `VITE_`, `EXPO_PUBLIC_`,
 
 ## Current boundary and next checks
 
-The first sign-in RPC migration and version 2 of the sign-in-only `account-api`
-Edge Function were installed in the confirmed Kavach production project. Its exact-origin
-allowlist and rate-limit pepper are configured as server secrets. A live request
-with fictional invalid credentials returned the generic sign-in error, correct
-production-origin CORS and `no-store` headers; a disallowed origin was rejected.
+The account schema, web account-management migration and version 3 of
+`account-api` are installed in the confirmed Kavach production project. Its
+exact-origin allowlist and rate-limit pepper are configured as server secrets.
+A live request with fictional invalid credentials returned the generic sign-in
+error, correct production-origin CORS and `no-store` headers; a disallowed origin
+was rejected. Public Auth signup is closed and the hosted password minimum is 12
+characters.
 
 There are still no Auth users or live resident accounts. Before provisioning:
 
-1. verify public signup and outbound email settings in Supabase Auth;
-2. implement and review the controlled owner-bootstrap operation;
+1. review outbound email settings in Supabase Auth before enabling personal-email
+   account flows;
+2. execute the existing controlled owner-bootstrap operation with an explicitly
+   chosen owner identity;
 3. test the no-email flow with fictional users in a development/staging branch;
 4. test throttling, disabled membership and cross-community denial with complete
    fixtures; and
 5. review access-token lifetime and server-side revocation checks for recovery.
 
-The `web_auth_user_management` migration and expanded Edge Function in this
-feature branch have been type-checked and tested locally but have **not** been
-applied or deployed. Setup grants, assisted recovery, staff account creation and
-native session storage remain subsequent working slices.
+The `web_auth_user_management` migration, expanded Edge Function and web login
+are deployed. Setup grants, assisted recovery, staff account creation and native
+session storage remain subsequent working slices.
