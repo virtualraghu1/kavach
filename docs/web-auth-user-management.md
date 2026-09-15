@@ -42,7 +42,8 @@ The explicitly approved rollout applied these components together:
 4. exact `KAVACH_ALLOWED_ORIGINS` configuration for the chosen preview or
    production URL.
 
-Hosted public signup is closed and the hosted password minimum is 12 characters.
+Hosted public signup is closed and the hosted password policy is length-only
+with a six-character minimum.
 Before using real residents, create isolated fictional owner, staff, resident
 and second-community fixtures. Verify
 cross-community denial, disabled-account denial and session revocation through

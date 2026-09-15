@@ -42,8 +42,9 @@ first three database migrations were applied to the confirmed replacement
 Kavach project on 14 September 2026. The web account-management migration and
 version 3 of the reviewed Edge Function were deployed on 15 September 2026,
 together with the production web login and role workspaces. Public Auth signup
-is closed and the hosted password minimum is 12 characters. No Auth users or
-resident fixtures were created. See
+is closed and the hosted password policy is length-only with a six-character
+minimum. The first username-only owner account was bootstrapped and verified on
+15 September 2026; no staff or resident fixtures have been created. See
 [`docs/phase2-database-migration.md`](docs/phase2-database-migration.md) for
 database evidence and [`docs/authentication-design.md`](docs/authentication-design.md)
 for the no-email identity, throttling and deployment boundaries.
@@ -54,7 +55,7 @@ staging-branch attempt in the former Free organisation was rejected before
 creation. The replacement organisation is Pro; no branch was created as part of
 this connection switch. See
 [`docs/phase-one-owner-bootstrap.md`](docs/phase-one-owner-bootstrap.md) for the
-environment decision, implemented safeguards and remaining execution gate.
+environment decision, implemented safeguards and production execution record.
 
 ## Project materials
 

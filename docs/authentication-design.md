@@ -118,7 +118,11 @@ Ordinary staff cannot grant roles, recover staff/owner accounts or expand their
 community assignment. Owner break-glass recovery must remain a separate,
 audited operational procedure and must not be exposed as a public endpoint.
 
-No owner or staff account has been bootstrapped yet.
+The first production owner account was bootstrapped on 15 September 2026 using
+an opaque internal Auth identity. The application username, active owner role,
+display name and authenticated owner workspace were verified through the
+deployed `account-api`; verification sessions were then revoked. No staff or
+resident accounts were created.
 
 ## Required deployment configuration
 
@@ -144,19 +148,19 @@ The account schema, web account-management migration and version 3 of
 exact-origin allowlist and rate-limit pepper are configured as server secrets.
 A live request with fictional invalid credentials returned the generic sign-in
 error, correct production-origin CORS and `no-store` headers; a disallowed origin
-was rejected. Public Auth signup is closed and the hosted password minimum is 12
-characters.
+was rejected. Public Auth signup is closed and the hosted password policy is
+length-only with a six-character minimum.
 
-There are still no Auth users or live resident accounts. Before provisioning:
+There is one active username-only owner and no live staff or resident accounts.
+Before further provisioning:
 
 1. review outbound email settings in Supabase Auth before enabling personal-email
    account flows;
-2. execute the existing controlled owner-bootstrap operation with an explicitly
-   chosen owner identity;
-3. test the no-email flow with fictional users in a development/staging branch;
-4. test throttling, disabled membership and cross-community denial with complete
+2. test the no-email setup flow with fictional users in a development/staging
+   branch;
+3. test throttling, disabled membership and cross-community denial with complete
    fixtures; and
-5. review access-token lifetime and server-side revocation checks for recovery.
+4. review access-token lifetime and server-side revocation checks for recovery.
 
 The `web_auth_user_management` migration, expanded Edge Function and web login
 are deployed. Setup grants, assisted recovery, staff account creation and native

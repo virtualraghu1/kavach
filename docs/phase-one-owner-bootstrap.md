@@ -1,7 +1,7 @@
 # Phase One: staging and owner bootstrap
 
-Status on 14 September 2026: local implementation complete; remote execution
-blocked by the staging and owner-identity gates below.
+Status: local safeguards completed on 14 September 2026; the explicitly
+authorised first production owner was created and verified on 15 September 2026.
 
 ## Environment decision
 
@@ -58,6 +58,20 @@ password or credential material.
    event, idempotent retry and rejection of a second owner.
 6. Remove the fictional user and temporary hosted environment after testing.
 
-Production bootstrap remains blocked until the project owner supplies and
-approves the exact owner Auth user ID and username, plus an optional personal
-email that has genuinely been verified.
+## Production execution
+
+The project owner supplied and approved the username for the first production
+owner. The authorised operation then:
+
+- positively rechecked project `ldexvxjccihecrclirof` and confirmed there were
+  no existing Auth users, account links or owner roles;
+- created one opaque internal Auth identity without claiming ownership of a
+  personal email address;
+- created exactly one active owner account and global owner role;
+- verified username/password authentication and the authenticated owner
+  workspace through the deployed Edge Function;
+- confirmed the bootstrap and sign-in audit events; and
+- revoked the verification sessions after the checks completed.
+
+No staff or resident accounts were created. The password and internal Auth alias
+are intentionally absent from repository files and logs.
