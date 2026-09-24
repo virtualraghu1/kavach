@@ -23,11 +23,14 @@ import {
   AccountApiError,
   accountMutation,
   completeAccountSetup,
+  createResidentSetup,
   createStaffSetup,
   loadWorkspace,
   regenerateStaffSetup,
+  regenerateResidentSetup,
   signIn,
   type StaffSetupGrant,
+  type ResidentSetupGrant,
   type Workspace,
   type WorkspaceResident,
 } from "./accountApi";
@@ -651,6 +654,18 @@ export function App() {
         }
         return regenerateStaffSetup(accountId, session.access_token);
       }}
+      onCreateResident={async (residentId, username) => {
+        if (!session || preview) throw new AccountApiError("Changes are disabled in preview.", 400);
+        const setup = await createResidentSetup(residentId, username, session.access_token);
+        await refreshWorkspace(session);
+        return setup;
+      }}
+      onRegenerateResident={async (residentId) => {
+        if (!session || preview) throw new AccountApiError("Changes are disabled in preview.", 400);
+        const setup = await regenerateResidentSetup(residentId, session.access_token);
+        await refreshWorkspace(session);
+        return setup;
+      }}
       onSignOut={async () => {
         if (preview) {
           location.href = location.pathname;
@@ -671,6 +686,8 @@ function AuthenticatedShell({
   onMutate,
   onCreateStaff,
   onRegenerateStaff,
+  onCreateResident,
+  onRegenerateResident,
   onSignOut,
 }: {
   workspace: Workspace;
@@ -687,6 +704,8 @@ function AuthenticatedShell({
     communityId: string;
   }) => Promise<StaffSetupGrant>;
   onRegenerateStaff: (accountId: string) => Promise<StaffSetupGrant>;
+  onCreateResident: (residentId: string, username: string) => Promise<ResidentSetupGrant>;
+  onRegenerateResident: (residentId: string) => Promise<ResidentSetupGrant>;
   onSignOut: () => Promise<void>;
 }) {
   const owner = workspace.roles.some((role) => role.role === "owner");
@@ -719,6 +738,7 @@ function AuthenticatedShell({
           icon: UserGear,
         },
         { route: "residents" as const, label: "Residents", icon: UsersThree },
+        { route: "enrollment" as const, label: "Account setup", icon: User },
         { route: "settings" as const, label: "Settings", icon: GearSix },
       ]
     : resident
@@ -849,6 +869,10 @@ function AuthenticatedShell({
             <ResidentsPage
               workspace={workspace}
               enrollmentOnly={route === "enrollment"}
+              preview={preview}
+              onCreateResident={onCreateResident}
+              onRegenerateResident={onRegenerateResident}
+              onRefresh={onRefresh}
             />
           ) : route === "profile" && resident ? (
             <ResidentProfile workspace={workspace} />
@@ -1394,11 +1418,47 @@ function residentStatus(resident: WorkspaceResident) {
 function ResidentsPage({
   workspace,
   enrollmentOnly,
+  preview,
+  onCreateResident,
+  onRegenerateResident,
+  onRefresh,
 }: {
   workspace: Workspace;
   enrollmentOnly: boolean;
+  preview: boolean;
+  onCreateResident: (residentId: string, username: string) => Promise<ResidentSetupGrant>;
+  onRegenerateResident: (residentId: string) => Promise<ResidentSetupGrant>;
+  onRefresh: () => Promise<void>;
 }) {
   const [query, setQuery] = useState("");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [username, setUsername] = useState("");
+  const [setup, setSetup] = useState<ResidentSetupGrant | null>(null);
+  const [setupError, setSetupError] = useState("");
+  const [setupBusy, setSetupBusy] = useState(false);
+  const selected = workspace.residents.find((resident) => resident.id === selectedId);
+  const selectedPending = selected?.accountStatus === "pending";
+  useEffect(() => {
+    if (preview || !selectedId || !selectedPending) return;
+    const interval = window.setInterval(() => { void onRefresh().catch(() => {}); }, 15000);
+    return () => window.clearInterval(interval);
+  }, [preview, selectedId, selectedPending, onRefresh]);
+  const issueSetup = async () => {
+    if (!selected) return;
+    setSetupBusy(true);
+    setSetupError("");
+    try {
+      const next = selected.accountStatus === "pending"
+        ? await onRegenerateResident(selected.id)
+        : await onCreateResident(selected.id, username.trim().toLowerCase());
+      setSetup(next);
+      setUsername(next.username);
+    } catch (reason) {
+      setSetupError(reason instanceof Error ? reason.message : "Account setup could not be started.");
+    } finally {
+      setSetupBusy(false);
+    }
+  };
   const shown = useMemo(() => {
     const normalized = query.trim().toLowerCase();
     return workspace.residents.filter((resident) => {
@@ -1473,6 +1533,14 @@ function ResidentsPage({
                 </span>
               </div>
               <StatusPill tone={status.tone}>{status.label}</StatusPill>
+              {enrollmentOnly && (
+                <button className="secondary" type="button" onClick={() => {
+                  setSelectedId(resident.id);
+                  setSetup(null);
+                  setSetupError("");
+                  setUsername("");
+                }}>Review account setup</button>
+              )}
             </article>
           );
         })}
@@ -1484,6 +1552,47 @@ function ResidentsPage({
           </div>
         )}
       </div>
+      {enrollmentOnly && selected && (
+        <section className="profile-card resident-setup-panel" aria-label="Resident account setup">
+          <div className="card-heading-row">
+            <div><span className="eyebrow">OFFICE-ASSISTED ACCOUNT SETUP</span>
+              <h2>Set up {selected.fullName.split(" ")[0]}’s account</h2>
+              <p>{selected.fullName} · House No. {selected.houseNumber}</p></div>
+            <StatusPill tone={residentStatus(selected).tone}>{residentStatus(selected).label}</StatusPill>
+          </div>
+          <p>Confirm the resident’s identity in person. Give the code only to the resident; they choose their password privately on their phone.</p>
+          {selected.accountStatus === "active" ? (
+            <p role="status">Account activated after the resident signed in. No setup action is needed.</p>
+          ) : !selected.verified || !selected.consentRecorded || selected.membershipStatus !== "active" || selected.profileStatus !== "active" ? (
+            <p role="status">Verification, enrollment consent and active membership are required before account setup.</p>
+          ) : (
+            <>
+              {selected.accountStatus === "not_created" && (
+                <label className="field"><span>Unique username</span>
+                  <input value={username} onChange={(event) => setUsername(event.target.value.toLowerCase())}
+                    autoCapitalize="none" autoComplete="off" spellCheck={false}
+                    placeholder="e.g. lakshmi.n" pattern="[a-z][a-z0-9._-]{3,31}" />
+                </label>
+              )}
+              {setup && setup.residentId === selected.id && (
+                <div className="code-box" role="status">
+                  <strong>In-person setup code</strong>
+                  <div className="pairing-code">{setup.code.slice(0, 3)} {setup.code.slice(3)}</div>
+                  <p>Username: {setup.username} · Expires at {new Intl.DateTimeFormat("en-IN", { timeStyle: "short", timeZone: "Asia/Kolkata" }).format(new Date(setup.expiresAt))} IST</p>
+                  <p>Open Kavach on the resident’s phone, choose “Set up my account,” and enter the username and code. Do not send the code by message.</p>
+                </div>
+              )}
+              {selected.accountStatus === "pending" && !setup && <p>Waiting for resident. The original code is not displayed again; issue a new code if needed.</p>}
+              {setupError && <p className="error-bar" role="alert">{setupError}</p>}
+              <button className="primary" type="button" disabled={preview || setupBusy || (selected.accountStatus === "not_created" && !/^[a-z][a-z0-9._-]{3,31}$/.test(username))}
+                onClick={() => void issueSetup()}>
+                {setupBusy ? "Preparing code…" : selected.accountStatus === "pending" ? "Generate a new setup code" : "Generate account setup code"}
+              </button>
+              {preview && <p>Development preview — account changes are disabled.</p>}
+            </>
+          )}
+        </section>
+      )}
     </section>
   );
 }

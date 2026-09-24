@@ -72,6 +72,11 @@ const staffSetupGrantSchema = z.object({
 
 export type StaffSetupGrant = z.infer<typeof staffSetupGrantSchema>;
 
+const residentSetupGrantSchema = staffSetupGrantSchema.extend({
+  residentId: z.string().uuid(),
+});
+export type ResidentSetupGrant = z.infer<typeof residentSetupGrantSchema>;
+
 type SessionTokens = {
   access_token: string;
   refresh_token: string;
@@ -191,6 +196,29 @@ export async function regenerateStaffSetup(
     accessToken,
   );
   return staffSetupGrantSchema.parse(payload.setup);
+}
+
+export async function createResidentSetup(
+  residentId: string,
+  username: string,
+  accessToken: string,
+) {
+  const payload = await request(
+    { action: "create_resident_setup", residentId, username },
+    accessToken,
+  );
+  return residentSetupGrantSchema.parse(payload.setup);
+}
+
+export async function regenerateResidentSetup(
+  residentId: string,
+  accessToken: string,
+) {
+  const payload = await request(
+    { action: "regenerate_resident_setup", residentId },
+    accessToken,
+  );
+  return residentSetupGrantSchema.parse(payload.setup);
 }
 
 export async function accountMutation(

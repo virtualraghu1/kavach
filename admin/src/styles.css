@@ -1877,6 +1877,24 @@ legend small {
 .resident-management-row {
   grid-template-columns: 66px minmax(230px, 1.1fr) minmax(250px, 1fr) auto;
 }
+.resident-management-row > button {
+  grid-column: 2 / -1;
+  justify-self: start;
+  min-height: 48px;
+  min-width: 210px;
+}
+.resident-setup-panel {
+  margin-top: 22px;
+  display: grid;
+  gap: 18px;
+}
+.resident-setup-panel .field {
+  max-width: 420px;
+}
+.resident-setup-panel > .primary {
+  min-height: 52px;
+  justify-self: start;
+}
 .admin-row .avatar,
 .resident-management-row .avatar {
   width: 64px;
@@ -2251,6 +2269,14 @@ legend small {
   }
   .admin-row > button {
     width: 100%;
+  }
+  .resident-management-row > button {
+    grid-column: 1 / -1;
+    justify-self: stretch;
+    width: 100%;
+  }
+  .resident-setup-panel > .primary {
+    justify-self: stretch;
   }
   .resident-welcome {
     align-items: flex-start;
