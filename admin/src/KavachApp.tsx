@@ -1,4 +1,3 @@
-import { AddResidentForm } from "./AddResidentForm";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import {
@@ -25,6 +24,8 @@ import {
   accountMutation,
   completeAccountSetup,
   createResidentSetup,
+  enrollResident,
+  recordResidentEnrollmentChecks,
   createStaffSetup,
   loadWorkspace,
   regenerateStaffSetup,
@@ -310,7 +311,6 @@ function LoginScreen({
               </button>
             </form>
             <div className="auth-links">
-              <button className="text-button" onClick={() => setView("qr-enrollment")}>Scan resident QR</button>
               <button className="text-button" onClick={() => setView("setup")}>
                 Set up my account
               </button>
@@ -321,6 +321,7 @@ function LoginScreen({
                 Forgot password?
               </button>
             </div>
+            <details className="qr-login-option"><summary>Have an enrollment QR?</summary><button className="text-button" onClick={() => setView("qr-enrollment")}>Scan resident QR</button></details>
             <p className="auth-footnote">
               Passwords and sign-in sessions are handled by Kavach’s separate
               Supabase project.
@@ -667,8 +668,19 @@ export function App() {
       onCreateResident={async (residentId, username) => {
         if (!session || preview) throw new AccountApiError("Changes are disabled in preview.", 400);
         const setup = await createResidentSetup(residentId, username, session.access_token);
-        await refreshWorkspace(session);
+        try { await refreshWorkspace(session); } catch { /* Keep the one-time code visible if refresh fails. */ }
         return setup;
+      }}
+      onAddResident={async (values) => {
+        if (!session || preview) throw new AccountApiError("Changes are disabled in preview.", 400);
+        const residentId = await enrollResident(values, session.access_token);
+        try { await refreshWorkspace(session); } catch { /* The ID still allows account setup. */ }
+        return residentId;
+      }}
+      onRecordResidentChecks={async (residentId, reason) => {
+        if (!session || preview) throw new AccountApiError("Changes are disabled in preview.", 400);
+        await recordResidentEnrollmentChecks(residentId, reason, session.access_token);
+        await refreshWorkspace(session);
       }}
       onRegenerateResident={async (residentId) => {
         if (!session || preview) throw new AccountApiError("Changes are disabled in preview.", 400);
@@ -698,6 +710,8 @@ function AuthenticatedShell({
   onCreateStaff,
   onRegenerateStaff,
   onCreateResident,
+  onAddResident,
+  onRecordResidentChecks,
   onRegenerateResident,
   onSignOut,
 }: {
@@ -717,6 +731,8 @@ function AuthenticatedShell({
   }) => Promise<StaffSetupGrant>;
   onRegenerateStaff: (accountId: string) => Promise<StaffSetupGrant>;
   onCreateResident: (residentId: string, username: string) => Promise<ResidentSetupGrant>;
+  onAddResident: (values: Record<string, unknown>) => Promise<string>;
+  onRecordResidentChecks: (residentId: string, reason: string) => Promise<void>;
   onRegenerateResident: (residentId: string) => Promise<ResidentSetupGrant>;
   onSignOut: () => Promise<void>;
 }) {
@@ -726,7 +742,7 @@ function AuthenticatedShell({
     ? "communities"
     : resident
       ? "profile"
-      : "residents";
+      : "enrollment";
   const [route, setRoute] = useState<AppRoute>(defaultRoute);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
@@ -750,7 +766,7 @@ function AuthenticatedShell({
           icon: UserGear,
         },
         { route: "residents" as const, label: "Residents", icon: UsersThree },
-        { route: "enrollment" as const, label: "Account setup", icon: User },
+        { route: "enrollment" as const, label: "Enrollment", icon: User },
         { route: "settings" as const, label: "Settings", icon: GearSix },
       ]
     : resident
@@ -885,7 +901,8 @@ function AuthenticatedShell({
               preview={preview}
               onCreateResident={onCreateResident}
               onRegenerateResident={onRegenerateResident}
-              onEnroll={(values) => onMutate("enroll_resident", values)}
+              onAddResident={onAddResident}
+              onRecordResidentChecks={onRecordResidentChecks}
               onRefresh={onRefresh}
             />
           ) : route === "profile" && resident ? (
@@ -1450,24 +1467,84 @@ function residentStatus(resident: WorkspaceResident) {
   return { label: "Details incomplete", tone: "gray" as const };
 }
 
+function AddResidentForm({ workspace, preview, onClose, onSave, onCreateSetup }: { workspace: Workspace; preview: boolean; onClose: () => void; onSave: (values: Record<string, unknown>) => Promise<string>; onCreateSetup: (residentId: string, username: string) => Promise<ResidentSetupGrant> }) {
+  const [requestId] = useState(() => crypto.randomUUID());
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [residentId, setResidentId] = useState("");
+  const [setup, setSetup] = useState<ResidentSetupGrant | null>(null);
+  const [username, setUsername] = useState("");
+  const [usernameEdited, setUsernameEdited] = useState(false);
+  const [fullName, setFullName] = useState("");
+  const issueCode = async (id: string, chosenUsername: string) => {
+    setBusy(true); setError("");
+    try { setSetup(await onCreateSetup(id, chosenUsername.trim().toLowerCase())); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : "The resident was saved, but the setup code could not be created. Check the username and try again below."); }
+    finally { setBusy(false); }
+  };
+  return <section className="profile-card resident-setup-panel new-enrollment" aria-label="Enroll resident">
+    <div><span className="eyebrow">ONE OFFICE VISIT</span><h2>{setup ? "Give the resident their setup code" : residentId ? "Finish account setup" : "Enroll a resident"}</h2>
+      <p>{setup ? "The resident chooses their own password on their phone." : residentId ? "The resident profile is saved. Create a setup code to finish." : "Add the resident and prepare their private account setup in one step."}</p></div>
+    {setup ? <div className="enrollment-success" role="status">
+      <div className="code-box"><strong>One-time setup code</strong><div className="pairing-code">{setup.code.slice(0, 3)} {setup.code.slice(3)}</div><p>Username: @{setup.username}</p><p>Expires at {new Intl.DateTimeFormat("en-IN", { timeStyle: "short", timeZone: "Asia/Kolkata" }).format(new Date(setup.expiresAt))} IST</p></div>
+      <ol><li>Give the username and code to the resident in person.</li><li>On their phone, open Kavach and tap “Set up my account.”</li><li>They enter the code and choose their own password.</li></ol>
+      <p>The code works once. It is not shown again after you close this panel.</p>
+      <button className="primary" type="button" onClick={onClose}>Done</button>
+    </div> : residentId ? <div className="enrollment-retry">
+      <p role="status">Resident saved. No setup code has been issued yet.</p>
+      <label className="field"><span>Username</span><input value={username} onChange={event => setUsername(event.target.value.toLowerCase())} pattern="[a-z][a-z0-9._-]{3,31}" minLength={4} maxLength={32} autoCapitalize="none" autoComplete="off" spellCheck={false} disabled={busy} /></label>
+      {error && <p role="alert" className="error-bar">{error}</p>}
+      <div className="dialog-actions"><button className="secondary" type="button" disabled={busy} onClick={onClose}>Finish later</button><button className="primary" type="button" disabled={busy || !/^[a-z][a-z0-9._-]{3,31}$/.test(username)} onClick={() => void issueCode(residentId, username)}>{busy ? "Creating code…" : "Create setup code"}</button></div>
+    </div> : <form onSubmit={async (event) => {
+      event.preventDefault(); if (busy || preview) return;
+      const data = new FormData(event.currentTarget);
+      setBusy(true); setError("");
+      try {
+        const id = await onSave({ requestId, communityId: data.get("communityId"), fullName: data.get("fullName"), houseNumber: data.get("houseNumber"), block: data.get("block"), category: data.get("category"), verificationReason: data.get("verificationReason"), verified: data.get("verified") === "on", consent: data.get("consent") === "on" });
+        setResidentId(id);
+        await issueCode(id, username);
+      }
+      catch (reason) { setError(reason instanceof Error ? reason.message : "Could not add resident."); }
+      finally { setBusy(false); }
+    }}>
+      <fieldset disabled={busy} style={{ border: 0, padding: 0, display: "grid", gap: 16 }}>
+        {workspace.communities.filter(c => c.active).length === 1 ? <input type="hidden" name="communityId" value={workspace.communities.find(c => c.active)?.id ?? ""} /> : <label className="field"><span>Community</span><select name="communityId" required>{workspace.communities.filter(c => c.active).map(c => <option key={c.id} value={c.id}>{c.displayName}</option>)}</select></label>}
+        <label className="field"><span>Full name</span><input name="fullName" value={fullName} onChange={event => { const name = event.target.value; setFullName(name); if (!usernameEdited) setUsername(name.trim().toLowerCase().normalize("NFKD").replace(/[^a-z0-9\s]/g, "").split(/\s+/).filter(Boolean).slice(0, 2).join(".").slice(0, 32)); }} required minLength={2} maxLength={160} /></label>
+        <label className="field"><span>House number</span><input name="houseNumber" required maxLength={40} /></label>
+        <label className="field"><span>Block (optional)</span><input name="block" maxLength={80} /></label>
+        <label className="field"><span>Member type</span><select name="category"><option value="senior">Senior</option><option value="community_member">Community member</option></select></label>
+        <label className="field enrollment-username"><span>Username for sign-in</span><input value={username} onChange={event => { setUsernameEdited(true); setUsername(event.target.value.toLowerCase()); }} pattern="[a-z][a-z0-9._-]{3,31}" minLength={4} maxLength={32} autoCapitalize="none" autoComplete="off" spellCheck={false} required /><small>Suggested from the name. Change it if this username is already taken.</small></label>
+        <label className="field"><span>How identity was checked</span><input name="verificationReason" required minLength={3} maxLength={500} placeholder="For example: checked against community register" /></label>
+        <label><input name="verified" type="checkbox" required /> Identity checked against community records</label>
+        <label><input name="consent" type="checkbox" required /> Resident has agreed to enrollment</label>
+        {preview && <p className="muted">Development preview — enrollment cannot be saved.</p>}
+        {error && <p role="alert" className="error-bar">{error}</p>}
+        <div className="dialog-actions"><button className="secondary" type="button" onClick={onClose}>Cancel</button><button className="primary" type="submit" disabled={preview}>{busy ? "Enrolling…" : "Enroll and create setup code"}</button></div>
+      </fieldset>
+    </form>}
+  </section>;
+}
+
 function ResidentsPage({
   accessToken,
+  onAddResident,
+  onRecordResidentChecks,
   workspace,
   enrollmentOnly,
   preview,
   onCreateResident,
   onRegenerateResident,
   onRefresh,
-  onEnroll,
 }: {
   accessToken?: string;
   workspace: Workspace;
+  onAddResident: (values: Record<string, unknown>) => Promise<string>;
+  onRecordResidentChecks: (residentId: string, reason: string) => Promise<void>;
   enrollmentOnly: boolean;
   preview: boolean;
   onCreateResident: (residentId: string, username: string) => Promise<ResidentSetupGrant>;
   onRegenerateResident: (residentId: string) => Promise<ResidentSetupGrant>;
   onRefresh: () => Promise<void>;
-  onEnroll: (values: Record<string, unknown>) => Promise<void>;
 }) {
   const [adding, setAdding] = useState(false);
   const [qrResident, setQrResident] = useState<WorkspaceResident | null>(null);
@@ -1477,8 +1554,14 @@ function ResidentsPage({
   const [setup, setSetup] = useState<ResidentSetupGrant | null>(null);
   const [setupError, setSetupError] = useState("");
   const [setupBusy, setSetupBusy] = useState(false);
+  const [verificationReason, setVerificationReason] = useState("");
+  const [identityChecked, setIdentityChecked] = useState(false);
+  const [consentChecked, setConsentChecked] = useState(false);
   const selected = workspace.residents.find((resident) => resident.id === selectedId);
   const selectedPending = selected?.accountStatus === "pending";
+  useEffect(() => {
+    if (selectedId) document.getElementById("resident-account-setup")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [selectedId]);
   useEffect(() => {
     if (preview || !selectedId || !selectedPending) return;
     const interval = window.setInterval(() => { void onRefresh().catch(() => {}); }, 15000);
@@ -1500,6 +1583,16 @@ function ResidentsPage({
       setSetupBusy(false);
     }
   };
+  const recordChecks = async () => {
+    if (!selected || setupBusy) return;
+    setSetupBusy(true); setSetupError("");
+    try {
+      await onRecordResidentChecks(selected.id, verificationReason.trim());
+      setVerificationReason(""); setIdentityChecked(false); setConsentChecked(false);
+    } catch (reason) {
+      setSetupError(reason instanceof Error ? reason.message : "The checks could not be recorded.");
+    } finally { setSetupBusy(false); }
+  };
   const shown = useMemo(() => {
     const normalized = query.trim().toLowerCase();
     return workspace.residents.filter((resident) => {
@@ -1512,26 +1605,27 @@ function ResidentsPage({
     });
   }, [enrollmentOnly, query, workspace.residents]);
   return (
-    <section className="management-page">
+    <section className={`management-page${enrollmentOnly ? " enrollment-management" : ""}`}>
       <div className="page-title-row">
         <div>
           <span className="eyebrow">
-            {enrollmentOnly ? "ACCOUNT ENROLLMENT" : "COMMUNITY MEMBERS"}
+            {enrollmentOnly ? "RESIDENT ENROLLMENT" : "COMMUNITY MEMBERS"}
           </span>
           <h1>
-            {enrollmentOnly ? "Residents needing account help" : "Residents"}
+            {enrollmentOnly ? "Enroll residents" : "Residents"}
           </h1>
           <p className="lead">
             {enrollmentOnly
-              ? "Authoritative status from membership, consent, verification and account records."
+              ? "Add a resident, verify their identity and consent, then give them a private setup code."
               : "Resident access is limited to the communities assigned to this account."}
           </p>
         </div>
       </div>
-      <button className="primary" type="button" disabled={!workspace.communities.some(c => c.active)} onClick={() => setAdding(true)}>Add resident</button>
-      {adding && <AddResidentForm workspace={workspace} onClose={() => setAdding(false)} onSave={onEnroll} />}
+      <button className="primary" type="button" disabled={adding} onClick={() => { setAdding(true); setSelectedId(null); }}>Enroll new resident</button>
+      {adding && <AddResidentForm workspace={workspace} preview={preview} onClose={() => setAdding(false)} onSave={onAddResident} onCreateSetup={onCreateResident} />}
       {qrResident && <ResidentQrIssuer resident={qrResident} accessToken={accessToken} onClose={() => setQrResident(null)} />}
-      {enrollmentOnly && <ResidentQrRequests accessToken={accessToken} preview={preview} residents={workspace.residents} onRefresh={onRefresh} />}
+      {enrollmentOnly && <details className="secondary-enrollment"><summary>QR requests and alternative enrollment</summary><ResidentQrRequests accessToken={accessToken} preview={preview} residents={workspace.residents} onRefresh={onRefresh} /></details>}
+      {enrollmentOnly && <h2 className="enrollment-list-title">Continue an existing enrollment</h2>}
       <label className="search management-search">
         <MagnifyingGlass size={21} />
         <span className="sr-only">Search residents</span>
@@ -1577,7 +1671,7 @@ function ResidentsPage({
                   Verification
                 </span>
               </div>
-              {resident.accountStatus === "not_created" && <button className="secondary" type="button" disabled={preview || resident.membershipStatus !== "active"} onClick={() => setQrResident(resident)}>Enrollment QR</button>}
+              {resident.accountStatus === "not_created" && !enrollmentOnly && <button className="secondary" type="button" disabled={preview || resident.membershipStatus !== "active"} onClick={() => setQrResident(resident)}>Enrollment QR</button>}
               <StatusPill tone={status.tone}>{status.label}</StatusPill>
               {enrollmentOnly && (
                 <button className="secondary" type="button" onClick={() => {
@@ -1585,7 +1679,10 @@ function ResidentsPage({
                   setSetup(null);
                   setSetupError("");
                   setUsername("");
-                }}>Review account setup</button>
+                  setVerificationReason("");
+                  setIdentityChecked(false);
+                  setConsentChecked(false);
+                }}>{!resident.verified || !resident.consentRecorded ? "View requirements" : resident.accountStatus === "pending" ? "Replace setup code" : "Finish setup"}</button>
               )}
             </article>
           );
@@ -1599,7 +1696,7 @@ function ResidentsPage({
         )}
       </div>
       {enrollmentOnly && selected && (
-        <section className="profile-card resident-setup-panel" aria-label="Resident account setup">
+        <section id="resident-account-setup" className="profile-card resident-setup-panel" aria-label="Resident account setup">
           <div className="card-heading-row">
             <div><span className="eyebrow">OFFICE-ASSISTED ACCOUNT SETUP</span>
               <h2>Set up {selected.fullName.split(" ")[0]}’s account</h2>
@@ -1609,8 +1706,18 @@ function ResidentsPage({
           <p>Confirm the resident’s identity in person. Give the code only to the resident; they choose their password privately on their phone.</p>
           {selected.accountStatus === "active" ? (
             <p role="status">Account activated after the resident signed in. No setup action is needed.</p>
-          ) : !selected.verified || !selected.consentRecorded || selected.membershipStatus !== "active" || selected.profileStatus !== "active" ? (
-            <p role="status">Verification, enrollment consent and active membership are required before account setup.</p>
+          ) : selected.membershipStatus !== "active" || selected.profileStatus !== "active" ? (
+            <p role="status">This resident needs an active community membership before account setup. Ask an administrator to review the membership.</p>
+          ) : !selected.verified || !selected.consentRecorded ? (
+            <div className="enrollment-checks-form">
+              <p>Complete the missing office checks for this resident. Then you can issue their setup code here.</p>
+              <label className="field"><span>How identity was checked</span><input value={verificationReason} onChange={event => setVerificationReason(event.target.value)} minLength={3} maxLength={500} placeholder="For example: checked against community register" disabled={setupBusy || preview} /></label>
+              <label><input type="checkbox" checked={identityChecked} onChange={event => setIdentityChecked(event.target.checked)} disabled={setupBusy || preview} /> Identity checked against community records</label>
+              <label><input type="checkbox" checked={consentChecked} onChange={event => setConsentChecked(event.target.checked)} disabled={setupBusy || preview} /> Resident has agreed to enrollment</label>
+              {setupError && <p role="alert" className="error-bar">{setupError}</p>}
+              <button className="primary" type="button" disabled={preview || setupBusy || verificationReason.trim().length < 3 || !identityChecked || !consentChecked} onClick={() => void recordChecks()}>{setupBusy ? "Recording checks…" : "Record checks and continue"}</button>
+              {preview && <p>Development preview — checks cannot be recorded.</p>}
+            </div>
           ) : (
             <>
               {selected.accountStatus === "not_created" && (

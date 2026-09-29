@@ -421,6 +421,33 @@ async function enrollResident(body: Record<string, unknown>, service: SupabaseCl
   return { status: 200, body: { residentId: data } };
 }
 
+async function recordResidentEnrollmentChecks(body: Record<string, unknown>, service: SupabaseClient, account: AuthenticatedAccount, roles: RoleRow[]) {
+  if (body.action !== "record_resident_enrollment_checks") return null;
+  const residentId = typeof body.residentId === "string" ? body.residentId : "";
+  const reason = textInput(body.verificationReason, 3, 500);
+  if (!/^[0-9a-f-]{36}$/i.test(residentId) || !reason || body.verified !== true || body.consent !== true) {
+    return { status: 400, body: { error: "Confirm the resident’s identity and consent, and describe how identity was checked." } };
+  }
+  const { data: resident, error: residentError } = await service.from("residents")
+    .select("id, community_id").eq("id", residentId).maybeSingle();
+  if (residentError) throw residentError;
+  if (!resident || (!hasOwnerRole(roles) && !roles.some(role =>
+    role.role === "community_staff" && role.community_id === resident.community_id))) {
+    return { status: 404, body: { error: "Resident not found in your community." } };
+  }
+  const { data, error } = await service.rpc("server_record_resident_enrollment_checks", {
+    p_resident_id: residentId,
+    p_actor: account.account_link_id,
+    p_reason: reason,
+    p_verified: true,
+    p_consent: true,
+  });
+  if (error || data !== true) {
+    return { status: error?.code === "42501" ? 403 : 409, body: { error: "The checks could not be recorded. Confirm active membership and try again." } };
+  }
+  return { status: 200, body: { recorded: true } };
+}
+
 async function residentQrMutation(
   body: Record<string, unknown>,
   service: SupabaseClient,
@@ -1502,6 +1529,8 @@ async function handleRequest(request: Request): Promise<Response> {
     if (sosResult) return response(sosResult.body, sosResult.status, corsOrigin);
     const enrollmentResult = await enrollResident(body, service, account, roles);
     if (enrollmentResult) return response(enrollmentResult.body, enrollmentResult.status, corsOrigin);
+    const checksResult = await recordResidentEnrollmentChecks(body, service, account, roles);
+    if (checksResult) return response(checksResult.body, checksResult.status, corsOrigin);
 
     const residentQrResult = await residentQrMutation(body, service, account, roles, grantPepper);
     if (residentQrResult) return response(residentQrResult.body, residentQrResult.status, corsOrigin);

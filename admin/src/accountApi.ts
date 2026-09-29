@@ -228,6 +228,16 @@ export async function createResidentSetup(
   return residentSetupGrantSchema.parse(payload.setup);
 }
 
+export async function enrollResident(values: Record<string, unknown>, accessToken: string): Promise<string> {
+  const payload = await request({ action: "enroll_resident", ...values }, accessToken);
+  return z.object({ residentId: z.string().uuid() }).parse(payload).residentId;
+}
+
+export async function recordResidentEnrollmentChecks(residentId: string, verificationReason: string, accessToken: string): Promise<void> {
+  const payload = await request({ action: "record_resident_enrollment_checks", residentId, verificationReason, verified: true, consent: true }, accessToken);
+  z.object({ recorded: z.literal(true) }).parse(payload);
+}
+
 export async function regenerateResidentSetup(
   residentId: string,
   accessToken: string,
@@ -271,4 +281,3 @@ export async function reviewResidentQrRequest(requestId: string, decision: "appr
   const payload = await request({ action: "review_resident_qr_request", requestId, decision }, accessToken);
   return decision === "approve" ? residentSetupGrantSchema.parse(payload.setup) : null;
 }
-

@@ -2329,3 +2329,53 @@ legend small {
 
 
 .primary.delete-community-confirm { background: #b42318; color: #fff; }
+
+.new-enrollment {
+  max-width: 760px;
+  padding: clamp(20px, 4vw, 34px);
+  border: 1px solid #d9e3dc;
+  border-radius: 20px;
+  background: #fff;
+}
+.new-enrollment h2,
+.new-enrollment p { margin-top: 6px; }
+.new-enrollment form .field,
+.enrollment-retry .field { max-width: none; }
+.new-enrollment form fieldset { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.new-enrollment form fieldset > label:nth-last-of-type(-n + 3),
+.new-enrollment form fieldset > .dialog-actions,
+.new-enrollment form fieldset > .error-bar { grid-column: 1 / -1; }
+.new-enrollment form fieldset > .enrollment-username { grid-column: 1 / -1; }
+.new-enrollment form fieldset > label:has(input[name="verificationReason"]) { grid-column: 1 / -1; }
+.enrollment-success ol { padding-left: 24px; line-height: 1.8; }
+.enrollment-success .primary { margin-top: 8px; }
+.enrollment-checks-form { display: grid; gap: 12px; max-width: 620px; }
+.enrollment-checks-form .field { max-width: none; }
+.enrollment-checks-form > label:not(.field) { display: flex; align-items: start; gap: 10px; }
+.enrollment-checks-form > label:not(.field) input { margin-top: 4px; }
+.enrollment-checks-form > .primary { justify-self: start; }
+.secondary-enrollment { margin-top: 20px; max-width: 760px; }
+.secondary-enrollment > summary { cursor: pointer; color: #28634b; font-weight: 700; padding: 10px 0; }
+.qr-login-option { margin-top: 14px; }
+.qr-login-option > summary { cursor: pointer; color: #596675; font-size: 14px; }
+.qr-login-option > .text-button { margin-top: 8px; }
+.enrollment-list-title { margin: 32px 0 12px; font-size: 20px; }
+.enrollment-management .resident-management-list { gap: 10px; }
+.enrollment-management .resident-management-row {
+  grid-template-areas: "avatar name status" "avatar checks action";
+  grid-template-columns: 50px minmax(0, 1fr) auto;
+  gap: 6px 14px;
+  padding: 15px 18px;
+}
+.enrollment-management .resident-management-row .avatar { grid-area: avatar; width: 50px; height: 50px; }
+.enrollment-management .resident-management-name { grid-area: name; }
+.enrollment-management .resident-checks { grid-area: checks; margin: 0; }
+.enrollment-management .resident-management-row > .status-pill { grid-area: status; justify-self: end; }
+.enrollment-management .resident-management-row > button { grid-area: action; min-width: 0; min-height: 38px; grid-column: auto; justify-self: end; }
+@media (max-width: 700px) {
+  .new-enrollment form fieldset { grid-template-columns: 1fr; }
+  .new-enrollment form fieldset > * { grid-column: 1 !important; }
+  .enrollment-management .resident-management-row { grid-template-areas: "avatar name" "status status" "checks checks" "action action"; grid-template-columns: 50px minmax(0, 1fr); }
+  .enrollment-management .resident-management-row > .status-pill { justify-self: start; }
+  .enrollment-management .resident-management-row > button { justify-self: stretch; }
+}
