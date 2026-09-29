@@ -241,6 +241,8 @@ export async function regenerateResidentSetup(
 
 export async function accountMutation(
   action:
+    | "enroll_resident"
+    | "delete_community"
     | "create_community"
     | "set_community_status"
     | "set_staff_account_status",

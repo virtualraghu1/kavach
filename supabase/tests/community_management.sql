@@ -1,0 +1,47 @@
+-- Run against pilot with migrations applied. All fixtures roll back.
+begin;
+do $$
+declare owner_id uuid; staff_id uuid; cid uuid; rid uuid:=gen_random_uuid(); auth_id uuid:=gen_random_uuid(); staff_auth uuid:=gen_random_uuid(); only_staff uuid:=gen_random_uuid(); grant_result record; req uuid; caught boolean; uname text:='qa.'||substr(replace(gen_random_uuid()::text,'-',''),1,20);
+begin
+  select a.id into owner_id from public.account_links a join public.role_assignments r on r.account_link_id=a.id where a.status='active' and r.active and r.role='owner' limit 1;
+  select a.id into staff_id from public.account_links a join public.role_assignments r on r.account_link_id=a.id join public.communities c on c.id=r.community_id and c.active where a.status='active' and r.active and r.role='community_staff' limit 1;
+  if owner_id is null or staff_id is null then raise exception 'pilot owner and staff required'; end if;
+  insert into public.communities(slug,display_name) values('delete-qa-'||gen_random_uuid()::text,'Fictional deletion QA') returning id into cid;
+  caught:=false;
+  begin perform public.server_enroll_resident(rid,staff_id,cid,'Fictional resident','QA-1',null,'senior',true,true,'QA verification'); exception when insufficient_privilege then caught:=true; end;
+  if not caught then raise exception 'cross-community enrollment allowed'; end if;
+  caught:=false;
+  begin perform public.server_enroll_resident(rid,owner_id,cid,'Fictional resident','QA-1',null,'senior',true,false,'QA verification'); exception when invalid_parameter_value then caught:=true; end;
+  if not caught then raise exception 'enrollment without consent allowed'; end if;
+  perform public.server_enroll_resident(rid,owner_id,cid,'Fictional resident','QA-1',null,'senior',true,true,'QA verification');
+  perform public.server_enroll_resident(rid,owner_id,cid,'Fictional resident','QA-1',null,'senior',true,true,'QA verification');
+  if (select count(*) from public.memberships where resident_id=rid)<>1 then raise exception 'enrollment retry duplicated membership'; end if;
+  perform public.server_issue_resident_qr(rid,owner_id,repeat('d',64),now()+interval '1 day');
+  perform public.server_request_resident_qr(repeat('d',64),uname);
+  select id into req from public.resident_qr_requests where resident_id=rid;
+  insert into auth.users(id,email,email_confirmed_at,raw_app_meta_data) values(auth_id,'qa-'||auth_id::text||'@accounts.kavach.invalid',now(),'{"kavach_internal_identity":true}');
+  select * into grant_result from public.server_approve_resident_qr(req,gen_random_uuid(),gen_random_uuid(),gen_random_uuid(),auth_id,'qa-'||auth_id::text||'@accounts.kavach.invalid',uname,rid,decode(repeat('ac',32),'hex'),now()+interval '5 minutes',owner_id);
+  insert into public.role_assignments(account_link_id,community_id,role,granted_by) values(staff_id,cid,'community_staff',owner_id);
+  insert into auth.users(id,email) values(staff_auth,'qa-'||staff_auth::text||'@accounts.kavach.invalid');
+  insert into public.account_links(id,auth_user_id,account_kind,status) values(only_staff,staff_auth,'staff','active');
+  insert into public.role_assignments(account_link_id,community_id,role,granted_by) values(only_staff,cid,'community_staff',owner_id);
+  caught:=false;
+  begin perform public.server_delete_community(cid,staff_id,'Fictional deletion QA'); exception when insufficient_privilege then caught:=true; end;
+  if not caught then raise exception 'staff deleted community'; end if;
+  caught:=false;
+  begin perform public.server_delete_community(cid,owner_id,'wrong name'); exception when others then caught:=true; end;
+  if not caught then raise exception 'wrong confirmation accepted'; end if;
+  perform public.server_delete_community(cid,owner_id,'Fictional deletion QA');
+  perform public.server_delete_community(cid,owner_id,'Fictional deletion QA');
+  if not exists(select 1 from public.communities where id=cid and deleted_at is not null and not active) then raise exception 'community not removed'; end if;
+  if not exists(select 1 from public.residents where id=rid and membership_state='inactive') then raise exception 'resident not retained inactive'; end if;
+  if exists(select 1 from public.role_assignments where community_id=cid and active) then raise exception 'community roles remained active'; end if;
+  if not exists(select 1 from public.account_links where id=staff_id and status='active') then raise exception 'shared staff lost other community access'; end if;
+  if exists(select 1 from public.account_links where id in (only_staff,grant_result.account_link_id) and status<>'disabled') then raise exception 'exclusive accounts stayed active'; end if;
+  if not exists(select 1 from kavach_private.account_grants where id=grant_result.grant_id and state='revoked') then raise exception 'setup grant remained valid'; end if;
+  caught:=false;
+  begin perform public.server_enroll_resident(gen_random_uuid(),owner_id,cid,'Another resident','QA-2',null,'senior',true,true,'QA verification'); exception when insufficient_privilege then caught:=true; end;
+  if not caught then raise exception 'deleted community accepted new resident'; end if;
+  if has_function_privilege('authenticated','public.server_delete_community(uuid,uuid,text)','execute') then raise exception 'client can invoke deletion directly'; end if;
+end $$;
+rollback;

@@ -194,6 +194,7 @@ async function workspaceFor(
   let communitiesQuery = service
     .from("communities")
     .select("id, slug, display_name, office_contact_text, timezone, active")
+    .is("deleted_at", null)
     .order("display_name");
   if (!owner) {
     communitiesQuery = communitiesQuery.in(
@@ -236,7 +237,7 @@ async function workspaceFor(
           ? visibleCommunityIds
           : ["00000000-0000-0000-0000-000000000000"],
       );
-  } else if (!owner) {
+  } else {
     residentsQuery = residentsQuery.in(
       "community_id",
       visibleCommunityIds.length
@@ -326,6 +327,7 @@ async function workspaceFor(
       .from("role_assignments")
       .select("account_link_id, community_id, role, active, granted_at")
       .eq("role", "community_staff")
+      .in("community_id", visibleCommunityIds.length ? visibleCommunityIds : ["00000000-0000-0000-0000-000000000000"])
       .order("granted_at");
     if (staffRolesError) throw staffRolesError;
     const staffIds = [
@@ -393,6 +395,32 @@ async function workspaceFor(
   };
 }
 
+async function enrollResident(body: Record<string, unknown>, service: SupabaseClient, account: AuthenticatedAccount, roles: RoleRow[]) {
+  if (body.action !== "enroll_resident") return null;
+  const communityId = typeof body.communityId === "string" ? body.communityId : "";
+  if (!hasOwnerRole(roles) && !roles.some((role) => role.role === "community_staff" && role.community_id === communityId)) {
+    return { status: 403, body: { error: "You cannot add residents to this community." } };
+  }
+  const name = textInput(body.fullName, 2, 160);
+  const house = textInput(body.houseNumber, 1, 40);
+  const reason = textInput(body.verificationReason, 3, 500);
+  if (!name || !house || !reason || body.verified !== true || body.consent !== true ||
+      !["senior", "community_member"].includes(String(body.category)) ||
+      typeof body.requestId !== "string" || !/^[0-9a-f-]{36}$/i.test(body.requestId) ||
+      !/^[0-9a-f-]{36}$/i.test(communityId) ||
+      (body.block != null && (typeof body.block !== "string" || body.block.length > 80))) {
+    return { status: 400, body: { error: "Enter resident details and confirm identity verification and enrollment consent." } };
+  }
+  const { data, error } = await service.rpc("server_enroll_resident", {
+    p_request_id: body.requestId, p_actor: account.account_link_id,
+    p_community_id: communityId, p_full_name: name, p_house_number: house,
+    p_block: body.block || null, p_category: body.category, p_verified: true,
+    p_consent: true, p_verification_reason: reason,
+  });
+  if (error) return { status: error.code === "42501" ? 403 : 409, body: { error: "Resident could not be added. Check the details and your community access." } };
+  return { status: 200, body: { residentId: data } };
+}
+
 async function residentQrMutation(
   body: Record<string, unknown>,
   service: SupabaseClient,
@@ -439,8 +467,8 @@ async function residentQrMutation(
 
   if (action === "list_resident_qr_requests") {
     let query = service.from("resident_qr_requests")
-      .select("id, resident_id, requested_username, requested_at, residents!inner(community_id, full_name, house_number)")
-      .eq("state", "pending");
+      .select("id, resident_id, requested_username, requested_at, residents!inner(community_id, full_name, house_number, communities!inner(deleted_at))")
+      .eq("state", "pending").is("residents.communities.deleted_at", null);
     if (!hasOwnerRole(roles)) query = query.in("residents.community_id", roles
       .filter(role => role.role === "community_staff" && role.community_id)
       .map(role => role.community_id!));
@@ -797,6 +825,13 @@ async function ownerMutation(
     return { status: 200, body: { community: data } };
   }
 
+  if (body.action === "delete_community") {
+    if (typeof body.communityId !== "string" || typeof body.confirmationName !== "string") return { status: 400, body: { error: "Confirm the community name." } };
+    const { error } = await service.rpc("server_delete_community", { p_community_id: body.communityId, p_actor: account.account_link_id, p_confirmation_name: body.confirmationName });
+    if (error) return { status: error.code === "42501" ? 403 : 409, body: { error: "Community could not be deleted. Check the confirmation name and refresh before trying again." } };
+    return { status: 200, body: { deleted: true } };
+  }
+
   if (body.action === "set_community_status") {
     if (
       typeof body.communityId !== "string" ||
@@ -811,6 +846,7 @@ async function ownerMutation(
       .from("communities")
       .update({ active: body.active })
       .eq("id", body.communityId)
+      .is("deleted_at", null)
       .select("id")
       .maybeSingle();
     if (error || !data) {
@@ -1464,6 +1500,9 @@ async function handleRequest(request: Request): Promise<Response> {
     const roles = await getRoles(service, account.account_link_id);
     const sosResult = await sosMutation(body, service, account, roles);
     if (sosResult) return response(sosResult.body, sosResult.status, corsOrigin);
+    const enrollmentResult = await enrollResident(body, service, account, roles);
+    if (enrollmentResult) return response(enrollmentResult.body, enrollmentResult.status, corsOrigin);
+
     const residentQrResult = await residentQrMutation(body, service, account, roles, grantPepper);
     if (residentQrResult) return response(residentQrResult.body, residentQrResult.status, corsOrigin);
     const residentSetupResult = await residentSetupMutation(

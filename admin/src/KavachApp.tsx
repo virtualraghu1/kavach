@@ -1,3 +1,4 @@
+import { AddResidentForm } from "./AddResidentForm";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import {
@@ -706,7 +707,7 @@ function AuthenticatedShell({
   onRefresh: () => Promise<void>;
   onMutate: (
     action:
-      "create_community" | "set_community_status" | "set_staff_account_status",
+      "enroll_resident" | "delete_community" | "create_community" | "set_community_status" | "set_staff_account_status",
     values: Record<string, unknown>,
   ) => Promise<void>;
   onCreateStaff: (values: {
@@ -884,6 +885,7 @@ function AuthenticatedShell({
               preview={preview}
               onCreateResident={onCreateResident}
               onRegenerateResident={onRegenerateResident}
+              onEnroll={(values) => onMutate("enroll_resident", values)}
               onRefresh={onRefresh}
             />
           ) : route === "profile" && resident ? (
@@ -952,7 +954,7 @@ function CommunitiesPage({
   busy: boolean;
   run: (work: () => Promise<void>, success: string) => Promise<void>;
   onMutate: (
-    action: "create_community" | "set_community_status",
+    action: "enroll_resident" | "delete_community" | "create_community" | "set_community_status",
     values: Record<string, unknown>,
   ) => Promise<void>;
 }) {
@@ -960,6 +962,10 @@ function CommunitiesPage({
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [officeHelp, setOfficeHelp] = useState("");
+  const [deleting, setDeleting] = useState<Workspace["communities"][number] | null>(null);
+  const [confirmation, setConfirmation] = useState("");
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
   return (
     <section className="management-page">
       <div className="page-title-row">
@@ -1044,11 +1050,28 @@ function CommunitiesPage({
                 >
                   {community.active ? "Disable community" : "Enable community"}
                 </button>
+                <button className="secondary danger" disabled={busy} onClick={() => { setDeleting(community); setConfirmation(""); setDeleteError(""); }}>Delete community</button>
               </div>
             </article>
           );
         })}
       </div>
+      {deleting && <Dialog title="Delete community" onClose={() => { if (!deleteBusy) setDeleting(null); }}>
+        <h2>{deleting.displayName}</h2>
+        <p>This will remove the community and its residents from the app and stop access for this community. Stored records are retained for recovery.</p>
+        <p><strong>{workspace.residents.filter(r => r.communityId === deleting.id).length} residents</strong> and <strong>{workspace.staff.filter(s => s.assignments.some(a => a.communityId === deleting.id)).length} administrators</strong> are linked. Administrators assigned to other communities keep access to those communities.</p>
+        <form onSubmit={async event => {
+          event.preventDefault(); if (deleteBusy || confirmation !== deleting.displayName) return;
+          setDeleteBusy(true); setDeleteError("");
+          try { await onMutate("delete_community", { communityId: deleting.id, confirmationName: confirmation }); setDeleting(null); }
+          catch (reason) { setDeleteError(reason instanceof Error ? reason.message : "Community could not be deleted."); }
+          finally { setDeleteBusy(false); }
+        }}>
+          <label className="field"><span>Type the community name to confirm</span><input value={confirmation} onChange={event => setConfirmation(event.target.value)} disabled={deleteBusy} autoComplete="off" required /></label>
+          {deleteError && <p className="notice notice-error" role="alert">{deleteError}</p>}
+          <div className="dialog-actions"><button type="button" className="secondary" disabled={deleteBusy} onClick={() => setDeleting(null)}>Cancel</button><button type="submit" className="primary delete-community-confirm" disabled={deleteBusy || confirmation !== deleting.displayName}>{deleteBusy ? "Deleting…" : "Delete community"}</button></div>
+        </form>
+      </Dialog>}
       {adding && (
         <Dialog title="Add a Kavach community" onClose={() => setAdding(false)}>
           <p className="dialog-intro">
@@ -1435,6 +1458,7 @@ function ResidentsPage({
   onCreateResident,
   onRegenerateResident,
   onRefresh,
+  onEnroll,
 }: {
   accessToken?: string;
   workspace: Workspace;
@@ -1443,7 +1467,9 @@ function ResidentsPage({
   onCreateResident: (residentId: string, username: string) => Promise<ResidentSetupGrant>;
   onRegenerateResident: (residentId: string) => Promise<ResidentSetupGrant>;
   onRefresh: () => Promise<void>;
+  onEnroll: (values: Record<string, unknown>) => Promise<void>;
 }) {
+  const [adding, setAdding] = useState(false);
   const [qrResident, setQrResident] = useState<WorkspaceResident | null>(null);
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -1502,6 +1528,8 @@ function ResidentsPage({
           </p>
         </div>
       </div>
+      <button className="primary" type="button" disabled={!workspace.communities.some(c => c.active)} onClick={() => setAdding(true)}>Add resident</button>
+      {adding && <AddResidentForm workspace={workspace} onClose={() => setAdding(false)} onSave={onEnroll} />}
       {qrResident && <ResidentQrIssuer resident={qrResident} accessToken={accessToken} onClose={() => setQrResident(null)} />}
       {enrollmentOnly && <ResidentQrRequests accessToken={accessToken} preview={preview} residents={workspace.residents} onRefresh={onRefresh} />}
       <label className="search management-search">
