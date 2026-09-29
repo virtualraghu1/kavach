@@ -34,6 +34,9 @@ import {
   type Workspace,
   type WorkspaceResident,
 } from "./accountApi";
+import { ResidentQrEnrollment } from "./ResidentQrEnrollment";
+import { ResidentQrIssuer, ResidentQrRequests } from "./ResidentQrAdmin";
+import { parseResidentQr } from "./residentQr";
 import { Dialog } from "./components";
 import { supabase, supabaseConfigured } from "./supabaseClient";
 import { DemoApp } from "./App";
@@ -47,7 +50,7 @@ type AppRoute =
   | "help"
   | "settings";
 
-type SignInView = "sign-in" | "setup" | "recovery";
+type SignInView = "sign-in" | "setup" | "recovery" | "qr-enrollment";
 
 const previewCommunityId = "00000000-0000-4000-8000-000000000001";
 
@@ -212,10 +215,12 @@ function LoginScreen({
   busy: boolean;
   error: string;
 }) {
-  const [view, setView] = useState<SignInView>("sign-in");
+  const [initialQr, setInitialQr] = useState(() => parseResidentQr(location.href, location.origin) ?? "");
+  const [view, setView] = useState<SignInView>(initialQr ? "qr-enrollment" : "sign-in");
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  useEffect(() => { if (initialQr) history.replaceState(null, "", location.pathname + location.search); }, [initialQr]);
 
   return (
     <main className="auth-page">
@@ -304,6 +309,7 @@ function LoginScreen({
               </button>
             </form>
             <div className="auth-links">
+              <button className="text-button" onClick={() => setView("qr-enrollment")}>Scan resident QR</button>
               <button className="text-button" onClick={() => setView("setup")}>
                 Set up my account
               </button>
@@ -319,6 +325,8 @@ function LoginScreen({
               Supabase project.
             </p>
           </>
+        ) : view === "qr-enrollment" ? (
+          <ResidentQrEnrollment initialToken={initialQr} onBack={() => { setInitialQr(""); setView("sign-in"); }} />
         ) : (
           <AccountHelp
             view={view}
@@ -342,7 +350,7 @@ function AccountHelp({
   onCompleteSetup,
   onSetupFinished,
 }: {
-  view: Exclude<SignInView, "sign-in">;
+  view: "setup" | "recovery";
   onBack: () => void;
   onCompleteSetup: (
     username: string,
@@ -618,6 +626,7 @@ export function App() {
   const preview = Boolean(previewRole);
   return (
     <AuthenticatedShell
+      accessToken={session?.access_token}
       workspace={workspace}
       preview={preview}
       onRefresh={async () => {
@@ -680,6 +689,7 @@ export function App() {
 }
 
 function AuthenticatedShell({
+  accessToken,
   workspace,
   preview,
   onRefresh,
@@ -690,6 +700,7 @@ function AuthenticatedShell({
   onRegenerateResident,
   onSignOut,
 }: {
+  accessToken?: string;
   workspace: Workspace;
   preview: boolean;
   onRefresh: () => Promise<void>;
@@ -867,6 +878,7 @@ function AuthenticatedShell({
             />
           ) : route === "residents" || route === "enrollment" ? (
             <ResidentsPage
+              accessToken={accessToken}
               workspace={workspace}
               enrollmentOnly={route === "enrollment"}
               preview={preview}
@@ -1416,6 +1428,7 @@ function residentStatus(resident: WorkspaceResident) {
 }
 
 function ResidentsPage({
+  accessToken,
   workspace,
   enrollmentOnly,
   preview,
@@ -1423,6 +1436,7 @@ function ResidentsPage({
   onRegenerateResident,
   onRefresh,
 }: {
+  accessToken?: string;
   workspace: Workspace;
   enrollmentOnly: boolean;
   preview: boolean;
@@ -1430,6 +1444,7 @@ function ResidentsPage({
   onRegenerateResident: (residentId: string) => Promise<ResidentSetupGrant>;
   onRefresh: () => Promise<void>;
 }) {
+  const [qrResident, setQrResident] = useState<WorkspaceResident | null>(null);
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [username, setUsername] = useState("");
@@ -1487,6 +1502,8 @@ function ResidentsPage({
           </p>
         </div>
       </div>
+      {qrResident && <ResidentQrIssuer resident={qrResident} accessToken={accessToken} onClose={() => setQrResident(null)} />}
+      {enrollmentOnly && <ResidentQrRequests accessToken={accessToken} preview={preview} residents={workspace.residents} onRefresh={onRefresh} />}
       <label className="search management-search">
         <MagnifyingGlass size={21} />
         <span className="sr-only">Search residents</span>
@@ -1532,6 +1549,7 @@ function ResidentsPage({
                   Verification
                 </span>
               </div>
+              {resident.accountStatus === "not_created" && <button className="secondary" type="button" disabled={preview || resident.membershipStatus !== "active"} onClick={() => setQrResident(resident)}>Enrollment QR</button>}
               <StatusPill tone={status.tone}>{status.label}</StatusPill>
               {enrollmentOnly && (
                 <button className="secondary" type="button" onClick={() => {

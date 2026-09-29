@@ -77,6 +77,24 @@ const residentSetupGrantSchema = staffSetupGrantSchema.extend({
 });
 export type ResidentSetupGrant = z.infer<typeof residentSetupGrantSchema>;
 
+const residentQrSchema = z.object({
+  token: z.string().regex(/^[0-9a-f]{64}$/),
+  residentId: z.string().uuid(),
+  expiresAt: z.string(),
+});
+export type ResidentQr = z.infer<typeof residentQrSchema>;
+
+const residentQrRequestSchema = z.object({
+  id: z.string().uuid(),
+  residentId: z.string().uuid(),
+  username: z.string(),
+  requestedAt: z.string(),
+  fullName: z.string(),
+  houseNumber: z.string(),
+  communityId: z.string().uuid(),
+});
+export type ResidentQrRequest = z.infer<typeof residentQrRequestSchema>;
+
 type SessionTokens = {
   access_token: string;
   refresh_token: string;
@@ -231,3 +249,24 @@ export async function accountMutation(
 ) {
   return request({ action, ...values }, accessToken);
 }
+
+export async function requestResidentQrEnrollment(token: string, username: string) {
+  const payload = await request({ action: "request_resident_qr_enrollment", token, username });
+  return z.object({ requested: z.literal(true) }).parse(payload);
+}
+
+export async function createResidentQr(residentId: string, accessToken: string): Promise<ResidentQr> {
+  const payload = await request({ action: "create_resident_qr", residentId }, accessToken);
+  return residentQrSchema.parse(payload.qr);
+}
+
+export async function listResidentQrRequests(accessToken: string): Promise<ResidentQrRequest[]> {
+  const payload = await request({ action: "list_resident_qr_requests" }, accessToken);
+  return z.array(residentQrRequestSchema).parse(payload.requests);
+}
+
+export async function reviewResidentQrRequest(requestId: string, decision: "approve" | "reject", accessToken: string): Promise<ResidentSetupGrant | null> {
+  const payload = await request({ action: "review_resident_qr_request", requestId, decision }, accessToken);
+  return decision === "approve" ? residentSetupGrantSchema.parse(payload.setup) : null;
+}
+

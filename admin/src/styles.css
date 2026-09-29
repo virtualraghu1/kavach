@@ -2302,3 +2302,28 @@ legend small {
     width: 100%;
   }
 }
+
+.qr-scan-options, .qr-issued { display: flex; flex-direction: column; gap: 18px; }
+.qr-issued { align-items: center; text-align: center; }
+.qr-issued h2, .qr-issued p { margin: 0; }
+.qr-issued p { line-height: 1.6; }
+.qr-issued .secondary { text-decoration: none; }
+.resident-qr-image { width: min(100%, 320px); height: auto; border: 1px solid #e4e8e1; border-radius: 16px; }
+.qr-camera { border-radius: 16px; overflow: hidden; background: #19231e; color: #fff; }
+.qr-camera video { display: block; width: 100%; aspect-ratio: 1; object-fit: cover; }
+.qr-camera p { color: #fff; padding: 10px; text-align: center; }
+.qr-confirm { display: flex; align-items: flex-start; gap: 12px; line-height: 1.55; padding: 16px 0; }
+.qr-confirm input { flex: 0 0 20px; width: 20px; height: 20px; margin: 2px 0 0; accent-color: #28634b; }
+.qr-request-success { color: #28634b; }
+.qr-request-success p { color: #3d4941; line-height: 1.65; }
+.qr-requests { margin: 20px 0; }
+.qr-request-row { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 18px 0; border-top: 1px solid #e4e8e1; }
+.qr-request-row p { margin: 6px 0; }
+.qr-request-row small { color: #637064; }
+.qr-scan-options summary { cursor: pointer; padding: 12px 0; color: #28634b; font-weight: 700; }
+.qr-enrollment .auth-form { margin-top: 18px; }
+@media (max-width: 640px) {
+  .qr-request-row, .qr-requests .card-heading-row { flex-direction: column; align-items: stretch; }
+  .qr-request-row button { width: 100%; }
+}
+

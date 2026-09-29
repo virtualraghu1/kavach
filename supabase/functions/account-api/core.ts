@@ -120,3 +120,4 @@ export function allowedOrigin(
     .filter(Boolean);
   return allowed.includes(origin) ? origin : null;
 }
+

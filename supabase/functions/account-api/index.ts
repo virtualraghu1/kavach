@@ -106,6 +106,16 @@ function bearerToken(request: Request): string | null {
   return match?.[1] ?? null;
 }
 
+function randomEnrollmentToken(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function enrollmentTokenDigest(token: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
 async function authenticate(
   request: Request,
   publicClient: SupabaseClient,
@@ -381,6 +391,200 @@ async function workspaceFor(
     residents,
     staff,
   };
+}
+
+async function residentQrMutation(
+  body: Record<string, unknown>,
+  service: SupabaseClient,
+  account: AuthenticatedAccount,
+  roles: RoleRow[],
+  grantPepper: string | null,
+) {
+  const action = body.action;
+  if (!["create_resident_qr", "list_resident_qr_requests", "review_resident_qr_request"].includes(String(action))) return null;
+  if (!hasOwnerRole(roles) && !roles.some((role) => role.role === "community_staff")) {
+    return { status: 403, body: { error: "Only authorised community staff can manage enrollment." } };
+  }
+  const canManage = (communityId: string) => hasOwnerRole(roles) || roles.some((role) =>
+    role.role === "community_staff" && role.community_id === communityId
+  );
+
+  if (action === "create_resident_qr") {
+    const residentId = typeof body.residentId === "string" ? body.residentId : "";
+    if (!/^[0-9a-f-]{36}$/i.test(residentId)) return { status: 400, body: { error: "Select a resident." } };
+    const { data: resident, error } = await service.from("residents")
+      .select("id, community_id, membership_state")
+      .eq("id", residentId).maybeSingle();
+    if (error) throw error;
+    if (!resident || !canManage(resident.community_id)) return { status: 404, body: { error: "Resident not found in your community." } };
+    if (resident.membership_state !== "active") return { status: 400, body: { error: "Activate this resident’s membership before issuing a QR." } };
+    const { data: accountLink, error: accountError } = await service.from("account_links")
+      .select("id").eq("resident_id", residentId).maybeSingle();
+    if (accountError) throw accountError;
+    if (accountLink) return { status: 409, body: { error: "This resident already has an account setup. Review that account instead." } };
+    const { data: pending, error: pendingError } = await service.from("resident_qr_requests")
+      .select("id").eq("resident_id", residentId).eq("state", "pending").maybeSingle();
+    if (pendingError) throw pendingError;
+    if (pending) return { status: 409, body: { error: "This resident already has a request awaiting review." } };
+    const token = randomEnrollmentToken();
+    const digest = await enrollmentTokenDigest(token);
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+    const { error: insertError } = await service.rpc("server_issue_resident_qr", {
+      p_resident_id: residentId, p_actor: account.account_link_id,
+      p_digest: digest, p_expires_at: expiresAt,
+    });
+    if (insertError) return { status: 409, body: { error: "The QR could not be issued. Refresh the resident’s account status and try again." } };
+    return { status: 200, body: { qr: { token, expiresAt, residentId } } };
+  }
+
+  if (action === "list_resident_qr_requests") {
+    let query = service.from("resident_qr_requests")
+      .select("id, resident_id, requested_username, requested_at, residents!inner(community_id, full_name, house_number)")
+      .eq("state", "pending");
+    if (!hasOwnerRole(roles)) query = query.in("residents.community_id", roles
+      .filter(role => role.role === "community_staff" && role.community_id)
+      .map(role => role.community_id!));
+    const { data, error } = await query.order("requested_at", { ascending: true }).limit(100);
+    if (error) throw error;
+    const requests = data as unknown as Array<{ id: string; resident_id: string; requested_username: string; requested_at: string; residents: { community_id: string; full_name: string; house_number: string } }>;
+    return { status: 200, body: { requests: (requests ?? []).map(item => ({
+      id: item.id, residentId: item.resident_id, username: item.requested_username,
+      requestedAt: item.requested_at, fullName: item.residents.full_name,
+      houseNumber: item.residents.house_number, communityId: item.residents.community_id,
+    })) } };
+  }
+
+  const requestId = typeof body.requestId === "string" ? body.requestId : "";
+  const decision = body.decision;
+  if (!/^[0-9a-f-]{36}$/i.test(requestId) || (decision !== "approve" && decision !== "reject")) {
+    return { status: 400, body: { error: "Choose an enrollment request and decision." } };
+  }
+  const { data: pending, error: pendingError } = await service.from("resident_qr_requests")
+    .select("id, resident_id, requested_username, state")
+    .eq("id", requestId).maybeSingle();
+  if (pendingError) throw pendingError;
+  if (!pending || pending.state !== "pending") return { status: 409, body: { error: "This request is no longer pending." } };
+  const { data: resident, error: residentError } = await service.from("residents")
+    .select("id, community_id")
+    .eq("id", pending.resident_id).maybeSingle();
+  if (residentError) throw residentError;
+  if (!resident || !canManage(resident.community_id)) return { status: 404, body: { error: "Resident not found in your community." } };
+  if (decision === "reject") {
+    const { data, error } = await service.from("resident_qr_requests")
+      .update({ state: "rejected", reviewed_by: account.account_link_id, reviewed_at: new Date().toISOString() })
+      .eq("id", requestId).eq("state", "pending").select("id").maybeSingle();
+    if (error || !data) return { status: 409, body: { error: "This request could not be rejected." } };
+    return { status: 200, body: { reviewed: true } };
+  }
+  if (!grantPepper) return { status: 503, body: { error: "Account setup is not configured." } };
+  const setup = await residentSetupMutation({
+    action: "create_resident_setup", residentId: resident.id, username: pending.requested_username,
+  }, service, account, roles, grantPepper, pending.id);
+  return setup;
+
+}
+
+async function residentSetupMutation(
+  body: Record<string, unknown>,
+  service: SupabaseClient,
+  account: AuthenticatedAccount,
+  roles: RoleRow[],
+  grantPepper: string | null,
+  qrRequestId?: string,
+) {
+  if (body.action !== "create_resident_setup" &&
+    body.action !== "regenerate_resident_setup") return null;
+  if (!grantPepper) return { status: 503, body: { error: "Account setup is not configured." } };
+  const residentId = typeof body.residentId === "string" ? body.residentId : "";
+  const requestedUsername = normalizeUsername(body.username);
+  if (!/^[0-9a-f-]{36}$/i.test(residentId) ||
+    (body.action === "create_resident_setup" && !requestedUsername)) {
+    return { status: 400, body: { error: "Select a resident and enter a valid username." } };
+  }
+  const { data: resident, error: residentError } = await service
+    .from("residents")
+    .select("id, community_id, full_name, membership_state")
+    .eq("id", residentId).maybeSingle();
+  if (residentError) throw residentError;
+  if (!resident || (!hasOwnerRole(roles) && !roles.some((role) =>
+    role.role === "community_staff" && role.community_id === resident.community_id
+  ))) return { status: 404, body: { error: "Resident not found in your community." } };
+  if (resident.membership_state !== "active") {
+    return { status: 400, body: { error: "This resident is not ready for account setup." } };
+  }
+  let username = requestedUsername;
+  if (body.action === "regenerate_resident_setup") {
+    const { data: link, error: linkError } = await service.from("account_links")
+      .select("id").eq("resident_id", residentId).eq("account_kind", "resident")
+      .eq("status", "pending").maybeSingle();
+    if (linkError || !link) {
+      return { status: 400, body: { error: "This resident has no pending setup." } };
+    }
+    username = (await usernamesFor(service, [link.id])).get(link.id) ?? null;
+    if (!username) return { status: 503, body: { error: "Username unavailable." } };
+    const material = await staffSetupMaterial(grantPepper, username);
+    const { data, error } = await service.rpc("server_regenerate_resident_setup", {
+      p_resident_id: residentId,
+      p_password_operation_id: material.passwordOperationId,
+      p_grant_id: material.grantId,
+      p_code_digest: material.digest,
+      p_expires_at: material.expiresAt,
+      p_created_by: account.account_link_id,
+    });
+    const row = (data as Array<{ account_link_id: string }> | null)?.[0];
+    if (error || !row) {
+      return { status: 409, body: { error: "A new setup code could not be issued. Ask the office to review the account." } };
+    }
+    return { status: 200, body: { setup: {
+      accountId: row.account_link_id, residentId, username,
+      code: material.code, expiresAt: material.expiresAt,
+      communityId: resident.community_id,
+    } } };
+  }
+  if (!username) return { status: 400, body: { error: "Enter a valid username." } };
+  const material = await staffSetupMaterial(grantPepper, username);
+  const internalEmail = `auth-${crypto.randomUUID()}@accounts.kavach.invalid`;
+  const { data: auth, error: authError } = await service.auth.admin.createUser({
+    email: internalEmail,
+    email_confirm: true,
+    app_metadata: { kavach_internal_identity: true },
+  });
+  if (authError || !auth.user) {
+    return { status: 503, body: { error: "The resident account could not be prepared." } };
+  }
+  const { data: created, error: createError } = await service.rpc(
+    qrRequestId ? "server_approve_resident_qr" : "server_create_resident_setup",
+    {
+      ...(qrRequestId ? { p_request_id: qrRequestId } : {}),
+      p_provision_operation_id: crypto.randomUUID(),
+      p_password_operation_id: material.passwordOperationId,
+      p_grant_id: material.grantId,
+      p_auth_user_id: auth.user.id,
+      p_auth_email: internalEmail,
+      p_username: username,
+      p_resident_id: residentId,
+      p_code_digest: material.digest,
+      p_expires_at: material.expiresAt,
+      p_created_by: account.account_link_id,
+    },
+  );
+  const row = (created as Array<{ account_link_id: string }> | null)?.[0];
+  if (createError || !row) {
+    // A lost response can hide a committed account. Never delete a linked
+    // Auth identity, and retain it for reconciliation if the lookup fails.
+    const { data: linked, error: lookupError } = await service.from("account_links")
+      .select("id").eq("auth_user_id", auth.user.id).maybeSingle();
+    if (!lookupError && !linked) await service.auth.admin.deleteUser(auth.user.id).catch(() => null);
+    return { status: 409, body: { error: "Check eligibility and choose an unused username, then try again." } };
+  }
+  return { status: 200, body: { setup: {
+    accountId: row.account_link_id,
+    residentId,
+    username,
+    code: material.code,
+    expiresAt: material.expiresAt,
+    communityId: resident.community_id,
+  } } };
 }
 
 async function ownerMutation(
@@ -678,6 +882,234 @@ async function ownerMutation(
   return { status: 400, body: { error: "Unsupported action." } };
 }
 
+async function sosMutation(
+  body: Record<string, unknown>,
+  service: SupabaseClient,
+  account: AuthenticatedAccount,
+  roles: RoleRow[],
+) {
+  const incidentId = textInput(body.incidentId, 36, 36);
+  const hasResidentRole = roles.some((role) => role.role === "resident");
+  const hasStaffRole = roles.some((role) => role.role === "community_staff");
+
+  if (body.action === "sos_snapshot") {
+    if (!hasResidentRole && !hasStaffRole) {
+      return { status: 403, body: { error: "This account cannot view SOS alerts." } };
+    }
+    const { data, error } = await service.rpc("server_sos_snapshot", {
+      p_actor_account_link_id: account.account_link_id,
+    });
+    if (error) throw error;
+    return { status: 200, body: { incidents: data ?? [] } };
+  }
+
+  if (body.action === "sos_history") {
+    if (!hasStaffRole || account.account_kind !== "staff") {
+      return { status: 403, body: { error: "This account cannot view SOS history." } };
+    }
+    const requestedLimit = typeof body.limit === "number" && Number.isInteger(body.limit)
+      ? body.limit
+      : 100;
+    const { data, error } = await service.rpc("server_sos_history", {
+      p_actor_account_link_id: account.account_link_id,
+      p_limit: Math.min(Math.max(requestedLimit, 1), 200),
+    });
+    if (error) throw error;
+    return { status: 200, body: { incidents: data ?? [] } };
+  }
+
+  if (body.action === "sos_create_incident") {
+    const locationLabel = textInput(body.locationLabel, 2, 200);
+    const radius = typeof body.alertRadiusMetres === "number"
+      ? body.alertRadiusMetres
+      : 50;
+    const locationSource = body.locationSource === "device_gps"
+      ? "device_gps"
+      : "registered_house";
+    if (account.account_kind !== "resident" || !hasResidentRole || !locationLabel || !Number.isInteger(radius)) {
+      return { status: 403, body: { error: "This account cannot send an SOS." } };
+    }
+    const latitude = body.latitude;
+    const longitude = body.longitude;
+    if (locationSource === "device_gps" &&
+      (typeof latitude !== "number" || !Number.isFinite(latitude) || Math.abs(latitude) > 90 ||
+       typeof longitude !== "number" || !Number.isFinite(longitude) || Math.abs(longitude) > 180)) {
+      return { status: 400, body: { error: "Valid GPS coordinates are required." } };
+    }
+    const { data, error } = await service.rpc("server_create_sos_incident", {
+      p_actor_account_link_id: account.account_link_id,
+      p_alert_radius_metres: radius,
+      p_latitude: locationSource === "device_gps" ? latitude : null,
+      p_location_label: locationLabel,
+      p_location_source: locationSource,
+      p_longitude: locationSource === "device_gps" ? longitude : null,
+    });
+    const row = (data as Array<{ incident_id: string }> | null)?.[0];
+    if (error || !row) throw error ?? new Error("sos_create_failed");
+    return {
+      status: 201,
+      body: { incidentId: row.incident_id, result: "created", status: "sent" },
+    };
+  }
+
+  if (body.action === "sos_accept_incident") {
+    return {
+      status: 409,
+      body: { error: "Update Kavach before responding. Location verification is now required." },
+    };
+  }
+
+  if (body.action === "sos_accept_incident_v2") {
+    if (!incidentId || account.account_kind !== "resident" || !hasResidentRole) {
+      return { status: 403, body: { error: "This account cannot respond to this SOS." } };
+    }
+    const latitude = body.latitude;
+    const longitude = body.longitude;
+    const accuracyMetres = body.accuracyMetres;
+    const recordedAt = typeof body.recordedAt === "string" ? body.recordedAt : "";
+    const recordedAtMs = Date.parse(recordedAt);
+    if (typeof latitude !== "number" || !Number.isFinite(latitude) || Math.abs(latitude) > 90 ||
+      typeof longitude !== "number" || !Number.isFinite(longitude) || Math.abs(longitude) > 180 ||
+      typeof accuracyMetres !== "number" || !Number.isFinite(accuracyMetres) || accuracyMetres < 0 ||
+      !Number.isFinite(recordedAtMs)) {
+      return { status: 400, body: { error: "A fresh GPS location is required before you can respond." } };
+    }
+    const { data, error } = await service.rpc("server_accept_sos_incident", {
+      p_actor_account_link_id: account.account_link_id,
+      p_incident_id: incidentId,
+      p_responder_accuracy_metres: accuracyMetres,
+      p_responder_latitude: latitude,
+      p_responder_location_recorded_at: new Date(recordedAtMs).toISOString(),
+      p_responder_longitude: longitude,
+    });
+    const row = (data as Array<{ result: string; incident_status: string | null; distance_metres: number | string | null }> | null)?.[0];
+    if (error || !row) throw error ?? new Error("sos_accept_failed");
+    const distanceMetres = row.distance_metres == null ? undefined : Number(row.distance_metres);
+    return {
+      status: row.result === "accepted" ? 200 : 409,
+      body: {
+        result: row.result,
+        status: row.incident_status ?? "sent",
+        ...(Number.isFinite(distanceMetres) ? { distanceMetres } : {}),
+        ...(row.result === "already_assigned"
+          ? { error: "Another community member has already accepted this SOS." }
+          : row.result === "not_eligible"
+          ? { error: "You are no longer eligible to respond to this SOS." }
+          : row.result === "outside_radius"
+          ? { error: `You are ${Math.round(distanceMetres ?? 0)} metres away. Move within 50 metres of the alert before responding.` }
+          : row.result === "location_inaccurate"
+          ? { error: "GPS accuracy is too low. Move outdoors or near a window, then try again." }
+          : row.result === "location_stale"
+          ? { error: "Your GPS location is out of date. Try again to capture a fresh location." }
+          : row.result === "alert_location_unavailable"
+          ? { error: "This alert does not have a phone GPS location, so distance cannot be verified." }
+          : row.result === "location_unavailable"
+          ? { error: "A valid GPS location is required before you can respond." }
+          : {}),
+      },
+    };
+  }
+
+  if (body.action === "sos_decline_incident") {
+    if (!incidentId || account.account_kind !== "resident" || !hasResidentRole) {
+      return { status: 403, body: { error: "This account cannot decline this SOS." } };
+    }
+    const { data, error } = await service.rpc("server_decline_sos_incident", {
+      p_actor_account_link_id: account.account_link_id,
+      p_incident_id: incidentId,
+    });
+    const row = (data as Array<{ result: string; incident_status: string | null }> | null)?.[0];
+    if (error || !row) throw error ?? new Error("sos_decline_failed");
+    return {
+      status: row.result === "updated" ? 200 : 409,
+      body: {
+        result: row.result,
+        status: row.incident_status ?? "sent",
+        ...(row.result === "not_eligible"
+          ? { error: "This SOS is no longer available to decline." }
+          : row.result === "invalid_state"
+          ? { error: "This SOS can no longer be declined." }
+          : row.result === "not_found"
+          ? { error: "This SOS is no longer active." }
+          : {}),
+      },
+    };
+  }
+
+  if (body.action === "sos_withdraw_response") {
+    if (!incidentId || account.account_kind !== "resident" || !hasResidentRole) {
+      return { status: 403, body: { error: "This account cannot withdraw this response." } };
+    }
+    const { data, error } = await service.rpc("server_withdraw_sos_response", {
+      p_actor_account_link_id: account.account_link_id,
+      p_incident_id: incidentId,
+    });
+    const row = (data as Array<{ result: string; incident_status: string | null }> | null)?.[0];
+    if (error || !row) throw error ?? new Error("sos_withdraw_failed");
+    return {
+      status: row.result === "updated" ? 200 : 409,
+      body: {
+        result: row.result,
+        status: row.incident_status ?? "sent",
+        ...(row.result === "not_eligible"
+          ? { error: "Only the assigned responder can cancel this response." }
+          : row.result === "invalid_state"
+          ? { error: "This response can no longer be cancelled." }
+          : row.result === "not_found"
+          ? { error: "This SOS is no longer active." }
+          : {}),
+      },
+    };
+  }
+
+  if (body.action === "sos_cancel_incident") {
+    if (!incidentId || account.account_kind !== "resident" || !hasResidentRole) {
+      return { status: 403, body: { error: "This account cannot cancel this SOS." } };
+    }
+    const { data, error } = await service.rpc("server_cancel_sos_incident", {
+      p_actor_account_link_id: account.account_link_id,
+      p_incident_id: incidentId,
+    });
+    const row = (data as Array<{ result: string; incident_status: string | null }> | null)?.[0];
+    if (error || !row) throw error ?? new Error("sos_cancel_failed");
+    return {
+      status: row.result === "updated" ? 200 : 409,
+      body: {
+        result: row.result,
+        status: row.incident_status ?? "sent",
+        ...(row.result === "not_eligible"
+          ? { error: "Only the resident who sent this alert can cancel it." }
+          : row.result === "invalid_state"
+          ? { error: "This alert can no longer be cancelled." }
+          : {}),
+      },
+    };
+  }
+
+  if (body.action === "sos_update_incident") {
+    const incidentAction = body.incidentAction;
+    if (!incidentId || (incidentAction !== "acknowledge" && incidentAction !== "arrive" && incidentAction !== "resolve")) {
+      return { status: 400, body: { error: "Invalid SOS update." } };
+    }
+    if ((incidentAction === "acknowledge" && !hasStaffRole) || (incidentAction === "arrive" && !hasResidentRole) || (incidentAction === "resolve" && !hasStaffRole && !hasResidentRole)) {
+      return { status: 403, body: { error: "This account cannot make that SOS update." } };
+    }
+    const { data, error } = await service.rpc("server_update_sos_incident", {
+      p_action: incidentAction,
+      p_actor_account_link_id: account.account_link_id,
+      p_incident_id: incidentId,
+    });
+    const row = (data as Array<{ result: string; incident_status: string | null }> | null)?.[0];
+    if (error || !row) throw error ?? new Error("sos_update_failed");
+    return {
+      status: row.result === "updated" ? 200 : 409,
+      body: { result: row.result, status: row.incident_status ?? "sent" },
+    };
+  }
+
+  return null;
+}
+
 async function handleRequest(request: Request): Promise<Response> {
   const configuredOrigins = Deno.env.get("KAVACH_ALLOWED_ORIGINS") ?? "";
   const requestOrigin = request.headers.get("origin");
@@ -807,6 +1239,30 @@ async function handleRequest(request: Request): Promise<Response> {
     }
   }
 
+  if (body.action === "request_resident_qr_enrollment") {
+    const token = typeof body.token === "string" ? body.token.trim().toLowerCase() : "";
+    const username = normalizeUsername(body.username);
+    if (!/^[0-9a-f]{64}$/.test(token) || !username) {
+      return response({ error: "Scan a valid Kavach QR and choose a valid username." }, 400, corsOrigin);
+    }
+    try {
+      const limited = await consumeRateLimit(
+        rpc,
+        await hmacBucket(pepper, "network", clientAddress(request.headers)),
+        "qr_enrollment_network", 20,
+      );
+      if (!limited.allowed) return response({ error: "Too many requests. Please try again later." }, 429, corsOrigin);
+      const digest = await enrollmentTokenDigest(token);
+      const { error: claimError } = await service.rpc("server_request_resident_qr", {
+        p_digest: digest, p_username: username,
+      });
+      if (claimError) return response({ error: "This QR has expired, was already used, or is unavailable. Ask the community office to review your enrollment." }, 409, corsOrigin);
+      return response({ requested: true }, 200, corsOrigin);
+    } catch {
+      return response({ error: "Enrollment requests are temporarily unavailable." }, 503, corsOrigin);
+    }
+  }
+
   if (body.action === "complete_account_setup") {
     const username = normalizeUsername(body.username);
     const code = normalizeSetupCode(body.code);
@@ -860,10 +1316,20 @@ async function handleRequest(request: Request): Promise<Response> {
         `setup:${username}`,
         code,
       );
-      const { data: begun, error: beginError } = await service.rpc(
+      let { data: begun, error: beginError } = await service.rpc(
         "server_begin_setup_redemption",
         { p_username: username, p_code_digest: digest },
       );
+      if (!beginError &&
+        (begun as Array<{ redemption_status: string }> | null)?.[0]
+            ?.redemption_status === "invalid") {
+        const residentAttempt = await service.rpc(
+          "server_begin_resident_setup_redemption",
+          { p_username: username, p_code_digest: digest },
+        );
+        begun = residentAttempt.data;
+        beginError = residentAttempt.error;
+      }
       const grant = (begun as
         | Array<{
           redemption_status: string;
@@ -996,6 +1462,16 @@ async function handleRequest(request: Request): Promise<Response> {
       );
     }
     const roles = await getRoles(service, account.account_link_id);
+    const sosResult = await sosMutation(body, service, account, roles);
+    if (sosResult) return response(sosResult.body, sosResult.status, corsOrigin);
+    const residentQrResult = await residentQrMutation(body, service, account, roles, grantPepper);
+    if (residentQrResult) return response(residentQrResult.body, residentQrResult.status, corsOrigin);
+    const residentSetupResult = await residentSetupMutation(
+      body, service, account, roles, grantPepper,
+    );
+    if (residentSetupResult) {
+      return response(residentSetupResult.body, residentSetupResult.status, corsOrigin);
+    }
     const result = await ownerMutation(
       body,
       service,
@@ -1022,3 +1498,4 @@ async function handleRequest(request: Request): Promise<Response> {
 
 export default { fetch: handleRequest };
 export { handleRequest };
+
